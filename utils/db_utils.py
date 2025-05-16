@@ -24,24 +24,25 @@ from pymilvus import (
     DataType,
     Collection,
 )
-from utils.text_process_utils import extract_title_from_block, deduplicate_ranked_blocks
+import torch
+from utils.text_process_utils import extract_title_from_block, deduplicate_ranked_blocks, clean_invisible, generate_summary_ChatGLM
+
 
 # 加载自定义词典（适用于电商/运营场景）
 jieba.load_userdict("./user_dict.txt")
 
-
-# ======================== Elasticsearch 索引重建 ========================
-def reset_es(args):
+# ======================== ES 索引重建 ========================
+def reset_es(host="192.168.7.247", index_name="test_env"):
     """重建 Elasticsearch 索引，含中文分词配置"""
-    es = Elasticsearch("http://localhost:9200")
+    es = Elasticsearch(f"http://{host}:9200", request_timeout=10)
     print("Connected to ElasticSearch!" if es.ping() else "Connection failed.")
 
-    if es.indices.exists(index=args.index_name):
-        print(f"⚠️ 索引 {args.index_name} 已存在，删除中...")
-        es.indices.delete(index=args.index_name)
+    if es.indices.exists(index=index_name):
+        print(f"⚠️ 索引 {index_name} 已存在，删除中...")
+        es.indices.delete(index="test_env", ignore_unavailable=True, request_timeout=20)
 
     es.indices.create(
-        index=args.index_name,
+        index=index_name,
         body={
             "settings": {
                 "analysis": {
@@ -79,55 +80,32 @@ def reset_es(args):
 
 
 # ======================== Milvus 向量库重建 ========================
-def reset_milvus(collection_name="jvliangqianchuan", dim=768):
+def reset_milvus(host="localhost", collection_name="test_env", dim=768):
     """重建 Milvus 向量索引集合，字段与 ES 对齐"""
-    connections.connect(alias="default", host="localhost", port="19530")
+    connections.connect(alias="default", host=host, port="19530")
     if utility.has_collection(collection_name):
         print(f"⚠️ Milvus 集合 '{collection_name}' 已存在，正在删除...")
         utility.drop_collection(collection_name)
 
     print(f"🚀 正在创建 Milvus collection: {collection_name}")
     fields = [
-        FieldSchema(name="chunk_idx", dtype=DataType.INT64, is_primary=True, auto_id=False),
+        FieldSchema(name="global_chunk_idx", dtype=DataType.INT64, is_primary=True, auto_id=False),
+        FieldSchema(name="chunk_idx", dtype=DataType.INT64),
         FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dim),
-        FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=8192),
-        FieldSchema(name="page_url", dtype=DataType.VARCHAR, max_length=512),
+        FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
+        FieldSchema(name="page_url", dtype=DataType.VARCHAR, max_length=1024),
         FieldSchema(name="page_name", dtype=DataType.VARCHAR, max_length=512),
         FieldSchema(name="title", dtype=DataType.VARCHAR, max_length=512),
-        FieldSchema(name="summary", dtype=DataType.VARCHAR, max_length=1024),
-        FieldSchema(name="time", dtype=DataType.VARCHAR, max_length=64),
+        FieldSchema(name="summary", dtype=DataType.VARCHAR, max_length=4096),
+        FieldSchema(name="time", dtype=DataType.VARCHAR, max_length=128),
     ]
+
     schema = CollectionSchema(fields=fields, description="HTML块向量索引")
     Collection(name=collection_name, schema=schema)
     print(f"✅ Milvus collection '{collection_name}' 已创建")
 
 
-# ======================== 摘要生成函数（ChatGLM） ========================
-def generate_summary_ChatGLM(text, model, tokenizer, max_new_tokens=200):
-    """调用 ChatGLM 模型生成简洁摘要（用于运营内容）"""
-    text = text.strip().replace("\x00", "")[:1000]
-    prompt = (
-        "请你阅读以下内容，并用简洁的语言总结出其主要信息和核心要点，"
-        "突出运营策略或平台规则，限制在100字以内：\n\n"
-        f"【文档内容】\n{text}"
-    )
-    try:
-        response, _ = model.chat(
-            tokenizer=tokenizer,
-            query=prompt,
-            history=[],
-            max_new_tokens=max_new_tokens,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9,
-        )
-        return response.strip()
-    except Exception as e:
-        print(f"⚠️ ChatGLM 摘要生成失败: {e}")
-        return ""
-
-
-# ======================== 文档块插入函数 ========================
+# ======================== 文档块插入函数，同时插入Milvus和ES，对应clean步骤的文件 ========================
 def insert_block_documents(
     block_tree,
     embedder,
@@ -146,6 +124,7 @@ def insert_block_documents(
 
     for pidx, tag in enumerate(path_tags):
         text = tag.get_text().strip().replace("\x00", "")
+        text = clean_invisible(text)
         if not text:
             continue
 
@@ -226,18 +205,89 @@ def insert_block_documents(
 
 
 
+# ======================== 插入 Milvus ========================
+def insert_block_to_milvus(doc_meta_list, embedder, host, collection_name, cnt):
+    connections.connect(alias="default", host=host, port="19530")
+    print(f"🧠 正在插入向量到 Milvus collection: {collection_name} ...")
 
-def query_block_rankings(
+    new_docs = []
+    for doc in doc_meta_list:
+        local_idx = doc["chunk_idx"]
+        global_idx = cnt + local_idx
+        doc["global_chunk_idx"] = global_idx
+        node = Document(page_content=doc["text"][:65535], metadata=doc)
+        new_docs.append(node)
+    Milvus.from_documents(
+        new_docs,
+        embedder,
+        collection_name=collection_name,
+        connection_args={
+            "host": "localhost",
+            "port": "19530",
+            "field_map": {
+                "chunk_idx": "chunk_idx",
+                "global_chunk_idx": "global_chunk_idx",
+                "title": "title",
+                "text": "text",
+                "page_name": "page_name",
+                "page_url": "page_url",
+                "summary": "summary",
+                "time": "time",
+            },
+        },
+        index_params={
+            "metric_type": "COSINE",
+            "index_type": "IVF_FLAT",
+            "params": {"nlist": 64},
+        },
+    )
+    print(f"✅ 已插入 Milvus：{len(doc_meta_list)} 条向量")
+    return cnt + len(doc_meta_list)
+
+
+# ======================== 插入 ES ========================
+def insert_block_to_es(doc_meta_list, host, es_index_name, cnt):
+    es = Elasticsearch(f"http://{host}:9200")
+    print(f"📥 正在插入文档到 Elasticsearch 索引: {es_index_name} ...")
+
+    actions = []
+    for doc in doc_meta_list:
+        local_idx = doc["chunk_idx"]
+        global_idx = cnt + local_idx
+        doc["global_chunk_idx"] = global_idx
+
+        actions.append({
+            "_index": es_index_name,
+            "_id": f"{doc['page_url']}#{global_idx}",
+            "_source": {
+                "chunk_idx": local_idx,
+                "global_chunk_idx": global_idx,
+                "title": doc["title"],
+                "summary": doc.get("summary", ""),
+                "text": doc["text"],
+                "page_url": doc["page_url"],
+                "page_name": doc["page_name"],
+                "time": doc.get("time", ""),
+            }
+        })
+
+    bulk(es, actions)
+    print(f"✅ 已插入 ES：{len(doc_meta_list)} 条文档块")
+    return cnt + len(doc_meta_list)
+
+
+# ======================== Milvus 查询函数 ========================
+def query_milvus_blocks(
     question,
     embedder,
-    es_index_name="jvliangqianchuan",
+    reranker=None,
     milvus_collection_name="jvliangqianchuan",
     top_k=10,
+    rerank_top_k=5,
     include_content=True,
 ):
-    print(f"\n🔍 Query: {question}")
+    print(f"\n🔍 Query (Milvus): {question}")
 
-    # ======================= Milvus 向量相似度检索 =======================
     print("📦 Connecting to Milvus ...")
     connections.connect(alias="default", host="localhost", port="19530")
 
@@ -252,9 +302,7 @@ def query_block_rankings(
             index_params={
                 "index_type": "IVF_FLAT",
                 "metric_type": "COSINE",
-                "params": {
-                    "nlist": 64
-                },
+                "params": {"nlist": 64},
             },
             index_name="default",
         )
@@ -267,15 +315,11 @@ def query_block_rankings(
     results = collection.search(
         data=[query_vec],
         anns_field="vector",
-        param={
-            "metric_type": "COSINE",
-            "params": {
-                "nprobe": 100
-            }
-        },
+        param={"metric_type": "COSINE", "params": {"nprobe": 100}},
         limit=top_k,
         output_fields=["text", "page_url", "chunk_idx", "page_name", "title", "summary", "time"],
     )
+    print(results)
 
     milvus_rank = []
     for hits in results:
@@ -290,17 +334,35 @@ def query_block_rankings(
                 "text": hit.entity.get("text", "") if include_content else "",
             })
 
+    print(f"🔎 Milvus 初始返回数量: {len(milvus_rank)}")
     milvus_rank = deduplicate_ranked_blocks(milvus_rank)
+    print(f"✅ 去重后保留数量: {len(milvus_rank)}")
+
+    if reranker is not None:
+        milvus_rank = rerank_results(milvus_rank, question, reranker, rerank_top_k)
+
     print("=" * 60)
     print("[Milvus] Top Results:")
-    for doc in milvus_rank:
+    for i, doc in enumerate(milvus_rank):
+        print(f"#{i+1} 🔸 Chunk ID: {doc['chunk_idx']} | summary: {doc['summary']}")
         print("-" * 100)
-        print(doc)
-    print("-" * 100)
     print("=" * 60)
 
-    # ======================= Elasticsearch 检索 =======================
-    print("🔍 Running Elasticsearch retrieval...")
+    return milvus_rank
+
+
+# ======================== ES 查询函数 ========================
+def query_es_blocks(
+    question,
+    es_index_name="jvliangqianchuan",
+    top_k=10,
+    include_content=True,
+):
+    print(f"\n🔍 Query (Elasticsearch): {question}")
+    from elasticsearch import Elasticsearch
+    import jieba
+    from utils.text_process_utils import deduplicate_ranked_blocks
+
     es = Elasticsearch("http://localhost:9200")
 
     def jieba_tokenize(text):
@@ -335,7 +397,7 @@ def query_block_rankings(
             "title": hit["_source"].get("title", "none"),
             "summary": hit["_source"].get("summary", ""),
             "time": hit["_source"].get("time", ""),
-            "content": hit["_source"]["content"] if include_content else "",
+            "content": hit["_source"].get("content", "") if include_content else "",
         } for hit in es_response["hits"]["hits"]
     ]
 
@@ -347,5 +409,46 @@ def query_block_rankings(
     print("-" * 100)
     print("=" * 60)
 
-    return {"milvus_rank": milvus_rank, "es_rank": es_rank}
+    return es_rank
 
+
+
+# ======================== Reranker 函数 ========================
+class Reranker:
+    def __init__(self, model, tokenizer, device):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.device = device
+
+    def compute_score_pairs(self, pairs):
+        inputs = self.tokenizer(
+            [q for q, a in pairs], [a for q, a in pairs],
+            padding=True, truncation=True, return_tensors="pt"
+        ).to(self.device)
+        with torch.no_grad():
+            scores = self.model(**inputs).logits.squeeze(-1)
+        return scores.cpu().tolist()
+
+
+def rerank_results(docs, query, reranker, top_k):
+    """
+    使用 reranker 对检索结果进行精排
+    """
+    print("🔁 Running Reranker...")
+    texts = [d["text"] for d in docs]
+    pairs = [(query, t) for t in texts]
+    scores = reranker.compute_score_pairs(pairs)
+
+    print("📊 原始顺序及分数:")
+    for i, (doc, score) in enumerate(zip(docs, scores)):
+        print(f"  [#{i+1}] chunk_idx={doc['chunk_idx']:<4} summary={doc['summary'][:30]:<30} score={score:.4f}")
+
+    reranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
+    reranked_docs = [x[0] for x in reranked[:top_k]]
+
+    print("\n🏆 Reranked Top Results:")
+    for i, (doc, score) in enumerate(reranked[:top_k]):
+        print(f"  [#{i+1}] chunk_idx={doc['chunk_idx']:<4} summary={doc['summary'][:30]:<30} score={score:.4f}")
+
+    print(f"✅ 精排完成，选取前 {top_k} 条")
+    return reranked_docs

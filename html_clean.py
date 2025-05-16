@@ -82,7 +82,7 @@ def process_html_file(source_path, target_path):
 # 全目录批量处理入口
 # ---------------------------
 
-source_root = "./巨量千川知识库"
+source_root = "./测试知识库"
 target_root = source_root + "_cleaned"
 
 os.makedirs(target_root, exist_ok=True)  # 创建目标根目录

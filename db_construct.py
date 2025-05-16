@@ -1,125 +1,71 @@
 import os
 import argparse
+import json
 import torch
-from transformers import AutoTokenizer
-from langchain_huggingface import HuggingFaceEmbeddings
 from transformers import AutoTokenizer, AutoModel
-
-from utils.html_utils import build_block_tree
-from utils.db_utils import insert_block_documents, query_block_rankings, reset_es, reset_milvus
+from langchain_huggingface import HuggingFaceEmbeddings
+from utils.db_utils import (
+    reset_es, reset_milvus,
+    insert_block_to_es, insert_block_to_milvus,
+    query_milvus_blocks
+)
 
 # 关闭 tokenizers 并行化警告
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# ======================== HTML 文件处理函数 ========================
+
+def get_all_json_files(json_root):
+    """获取所有 block json 文件路径"""
+    json_files = []
+    for root, _, files in os.walk(json_root):
+        for f in files:
+            if f.endswith(".json"):
+                json_files.append(os.path.join(root, f))
+    return json_files
 
 
-def process_html_file(html_path,
-                      args,
-                      embedder,
-                      summary_model,
-                      summary_tokenizer,
-                      index_name="jvliangqianchuan",
-                      insert_num=0):
-    with open(html_path, "r", encoding="utf-8") as f:
-        html = f.read()
-
-    print(f"\n=== Processing: {html_path} ===")
-
-    # 提取起始 <time> 标签（如存在）
-    time_pattern = r"^\s*<time[^>]*?>(.*?)</time>"
-    time_match = re.match(time_pattern, html, flags=re.IGNORECASE | re.DOTALL)
-
-    time_value = ""
-    if time_match:
-        time_value = time_match.group(1).strip()
-        html = html[time_match.end():].lstrip()
-
-    # 清洗并构建结构树
-    prune_zh = args.lang == "zh"
-    simplified_html = html
-    block_tree, simplified_html = build_block_tree(
-        simplified_html,
-        max_node_words=args.max_node_words_embed,
-        min_node_words=args.min_node_words_embed,
-        zh_char=prune_zh,
-    )
-
-    return insert_block_documents(
-        block_tree,
-        embedder,
-        collection_name=args.index_name,
-        page_url=os.path.relpath(html_path),
-        insert_num=insert_num,
-        summary_model=summary_model,
-        summary_tokenizer=summary_tokenizer,
-        time_value=time_value,  # 👈 传入提取的 time
-    )
-
-
-
-def get_all_html_files(html_dir):
-    html_files = []
-    for root, _, files in os.walk(html_dir):
-        for file in files:
-            if file.lower().endswith(".html"):
-                html_files.append(os.path.join(root, file))
-    return html_files
-
-
-# ======================== 主入口 ========================
-
+# ======================== 主程序入口 ========================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--html_dir", type=str, default="./巨量千川知识库_cleaned/粤理知识库")
-    parser.add_argument("--html_dir", type=str, default="./测试")
-    # parser.add_argument("--html_dir", type=str, default="./巨量千川知识库_cleaned")
-    parser.add_argument("--question", type=str, default="如何运营巨量千川平台")
+    parser.add_argument("--block_dir", type=str, default="./总知识库_cleaned_block")
     parser.add_argument("--lang", type=str, default="zh")
-    # parser.add_argument("--index_name", type=str, default="jvliangqianchuan")
     parser.add_argument("--index_name", type=str, default="test_env")
-    # parser.add_argument("--embed_model", type=str, default="./bge-m3-local")
-    parser.add_argument("--embed_model",type=str,default="../htmlRAG/bce-embedding-base_v1")
-    parser.add_argument("--summary_tokenizer", type=str, default="../htmlRAG/chatglm3-6b")
-    parser.add_argument("--summary_model", type=str, default="../htmlRAG/chatglm3-6b")
-    parser.add_argument("--max_node_words_embed", type=int, default=1024)
+    parser.add_argument("--Milvus_host", type=str, default="127.0.0.1")
+    parser.add_argument("--ES_host", type=str, default="192.168.7.247")
+    parser.add_argument("--embed_model", type=str, default="../htmlRAG/bce-embedding-base_v1")
+    parser.add_argument("--max_node_words_embed", type=int, default=4096)
     parser.add_argument("--min_node_words_embed", type=int, default=48)
     parser.add_argument("--max_context_window_embed", type=int, default=4096)
     parser.add_argument("--top_k", type=int, default=5)
+    parser.add_argument("--device", type=int, default=0)
     args = parser.parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    embedder = HuggingFaceEmbeddings(model_name=args.embed_model,model_kwargs={"device": device})
-    summary_tokenizer = AutoTokenizer.from_pretrained(args.summary_tokenizer, trust_remote_code=True)
-    summary_model = AutoModel.from_pretrained(args.summary_model, trust_remote_code=True).half().cuda()
+    # 初始化模型
+    device = f"cuda:{args.device}" if torch.cuda.is_available() else "cpu"
+    embedder = HuggingFaceEmbeddings(
+        model_name=args.embed_model,
+        model_kwargs={"device": device}
+    )
 
-    summary_model.eval()
+    # 重建 ES 和 Milvus 索引
+    # reset_es(args.ES_host, args.index_name)
+    # reset_milvus(args.Milvus_host, args.index_name, dim=len(embedder.embed_query("你好")))
 
-    # 重置 ES 和 Milvus 索引
-    reset_es(args)
-    reset_milvus(args.index_name, dim=len(embedder.embed_query("0")))
+    # 遍历所有 JSON 文件进行构建
+    block_dir = args.block_dir
+    json_files = get_all_json_files(block_dir)
+    print(f"📁 共发现 {len(json_files)} 个 JSON 文件待构建索引")
 
-    insert_num = 0
-    # 处理目录中所有 HTML 文件
-    html_files = get_all_html_files(args.html_dir)
-    print(f"📄 共发现 HTML 文件数: {len(html_files)}")
-    for html_file in html_files:
-        insert_num += process_html_file(html_file, args, embedder,summary_model,summary_tokenizer, args.index_name, insert_num)
-    print(f"✅ 成功插入文档块总数: {insert_num}")
+    cnt4ES = 0
+    cnt4Milvus = 0
+    for json_path in json_files:
+        print(f"\n📄 文档块文件: {json_path}")
+        with open(json_path, "r", encoding="utf-8") as f:
+            doc_meta_list = json.load(f)
+        # print(doc_meta_list)
+        cnt4Milvus = insert_block_to_milvus(doc_meta_list, embedder, args.Milvus_host, args.index_name, cnt4Milvus)
+        cnt4ES = insert_block_to_es(doc_meta_list, args.ES_host, args.index_name, cnt4ES)
 
-    # 无限循环，获取用户输入的问题进行检索
-    while True:
-        question = input("\n请输入查询问题（输入 exit 或 quit 退出）：\n>>> ").strip()
-        if question.lower() in {"exit", "quit"}:
-            print("👋 已退出查询模式")
-            break
 
-        query_block_rankings(
-            question,
-            embedder,
-            es_index_name=args.index_name,
-            milvus_collection_name=args.index_name,
-            top_k=args.top_k,
-            include_content=True,
-        )
+    print(f"\n✅ 所有文档块构建完成，ES总计插入 {cnt4ES} 条文档块")
+    print(f"\n✅ 所有文档块构建完成，Milvus总计插入 {cnt4Milvus} 条文档块")
