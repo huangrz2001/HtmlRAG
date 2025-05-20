@@ -4,6 +4,9 @@ import jieba
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import json
+from datetime import datetime
+import torch
+import jieba.analyse
 
 # 关闭并行化警告，避免控制台冗余信息
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -132,6 +135,84 @@ def filter_duplicate_blocks(texts: list, threshold=0.9) -> list:
     return keep_indices
 
 
+
+
+
+# ======================== 优化的 Jieba 查询构建函数 ========================
+def build_optimal_jieba_query(
+    jieba_keywords, fields_config, synonym_map=None, use_phrase=True, use_fuzzy=True
+):
+    """
+    综合多种技术的优化查询，增强同义词的使用
+
+    :param jieba_keywords: jieba库所提取的关键词
+    :param fields_config: {'title': {'boost':5, 'fuzzy':False}, ...}
+    :param synonym_map: 同义词词典，格式: {'关键词': ['同义词1', '同义词2']}
+    """
+    should_clauses = []
+
+    for word in jieba_keywords:
+        # 获取关键词及其同义词
+        synonyms = synonym_map.get(word, [word]) if synonym_map else [word]
+
+        for field, config in fields_config.items():
+            boost = config.get("boost", 1)
+
+            # 1. 为每个关键词及其同义词构建OR查询
+            synonym_queries = []
+
+            # 精确匹配（使用terms查询替代多个term查询）
+            if len(synonyms) > 0:
+                synonym_queries.append(
+                    {"terms": {f"{field}.keyword": synonyms, "boost": boost * 1.2}}
+                )
+
+            # 模糊匹配
+            if use_fuzzy and config.get("fuzzy", True):
+                for syn in synonyms:
+                    synonym_queries.append(
+                        {
+                            "match": {
+                                field: {
+                                    "query": syn,
+                                    "fuzziness": "AUTO",
+                                    "boost": boost * 0.5,
+                                }
+                            }
+                        }
+                    )
+
+            # 短语匹配
+            if use_phrase and len(word) > 1:
+                for syn in synonyms:
+                    synonym_queries.append(
+                        {
+                            "match_phrase": {
+                                field: {"query": syn, "slop": 2,
+                                        "boost": boost * 0.8}
+                            }
+                        }
+                    )
+
+            # 将所有同义词相关的查询组合到一个bool查询中
+            if synonym_queries:
+                should_clauses.append(
+                    {"bool": {"should": synonym_queries, "minimum_should_match": 1}}
+                )
+
+    return {
+        "query": {"bool": {"should": should_clauses, "minimum_should_match": "30%"}},
+        "highlight": {
+            "fields": {
+                "*": {
+                    "pre_tags": ["<em>"],
+                    "post_tags": ["</em>"],
+                }  # 添加简单的高亮标签
+            }
+        },
+    }
+
+
 # ======================== 检索结果去重函数（适用于 Milvus/ES） ========================
 
 def deduplicate_ranked_blocks(docs: list,
@@ -139,13 +220,21 @@ def deduplicate_ranked_blocks(docs: list,
                               threshold_page_name=0.6) -> list:
     """
     去重检索结果列表，判断依据：
-    - 内容相似度
-    - 页面名相似度
+    - 文本内容相似度 >= threshold_content
+    - 页面名相似度 >= threshold_page_name
+    - 若重复，保留 time 较新的文档块（格式为 'YYYY-MM-DD HH:MM:SS'）
     """
     if len(docs) <= 1:
         return docs
 
-    keep, seen = [], set()
+    keep = []
+    seen = set()
+
+    def parse_time(t: str) -> datetime:
+        try:
+            return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return datetime.min  # 空字符串或非法格式视为最旧
 
     for i, base in enumerate(docs):
         if i in seen:
@@ -153,7 +242,8 @@ def deduplicate_ranked_blocks(docs: list,
 
         base_text = clean_text(base.get("text", ""))
         base_name = clean_text(base.get("page_name", ""))
-        keep.append(base)
+        base_time = parse_time(base.get("time", ""))
+        best_doc = base
 
         for j in range(i + 1, len(docs)):
             if j in seen:
@@ -162,6 +252,7 @@ def deduplicate_ranked_blocks(docs: list,
             comp = docs[j]
             comp_text = clean_text(comp.get("text", ""))
             comp_name = clean_text(comp.get("page_name", ""))
+            comp_time = parse_time(comp.get("time", ""))
 
             try:
                 vectorizer = TfidfVectorizer(tokenizer=jieba_cut_clean)
@@ -170,58 +261,149 @@ def deduplicate_ranked_blocks(docs: list,
             except Exception as e:
                 print(f"⚠️ 相似度计算失败: {e}")
                 continue
+
             if sim_text >= threshold_content and sim_name >= threshold_page_name:
-                print(f"\n🔍 比较块 i={i} vs j={j}")
-                print(f"📎 内容相似度: {sim_text:.3f}，标题相似度: {sim_name:.3f}")
-                print("⛔️ 判为重复，跳过块 j\n" + "=" * 80)
-                seen.add(j)
+                # print(f"\n🔍 比较块 i={i} vs j={j}")
+                # print(f"📎 内容相似度: {sim_text:.3f}，标题相似度: {sim_name:.3f}")
+                if comp_time > base_time:
+                    # print("⛔️ j 时间更新，替换 i 并标记 i 为已处理\n" + "=" * 80)
+                    seen.add(i)
+                    best_doc = comp
+                    base_time = comp_time  # 更新为新的时间
+                    break  # j 替换了 i，则不再继续处理 i
+                else:
+                    # print("⛔️ 判为重复，跳过块 j\n" + "=" * 80)
+                    seen.add(j)
+
+        keep.append(best_doc)
 
     return keep
 
 
+# ======================== 文档块分类函数 ========================
+def infer_chunk_category(page_url):
+    if any(k in page_url for k in ["规则", "制度", "法律", "审核"]):
+        return "规则类"
+    elif any(k in page_url for k in ["使用", "指南", "帮助", "操作", "功能"]):
+        return "操作类"
+    elif any(k in page_url for k in ["生态", "角色", "策略", "推广", "平台信息"]):
+        return "信息类"
+    else:
+        return "泛用类"
 
+
+# ======================== ChatGLM 摘要生成函数 ========================
 def generate_summary_ChatGLM(
-        text, model, tokenizer, 
-        max_new_tokens=200, 
-        min_trigger_length=200, 
-        fallback_length=100
-    ):
-        """
-        用 ChatGLM 生成摘要：
-        - 如果正文长度小于 min_trigger_length，则直接返回全文；
-        - 如果摘要失败，则兜底返回正文前 fallback_length 个字符。
-        """
-        text = text.strip().replace("\x00", "")
-                
-        if len(text) < min_trigger_length * 2:
-            return text[:min_trigger_length]  # 正文太短，直接返回
-        
-        prompt = (
-            "请你阅读以下内容，并用简洁的语言总结出其主要信息和核心要点，"
-            "突出运营策略或平台规则，限制在100字以内：\n\n"
-            f"【文档内容】\n{text[:6000]}"
+    text,
+    page_url,
+    model,
+    tokenizer,
+    max_new_tokens=150,
+):
+    if len(text) < max_new_tokens * 2:
+        print("⚠️ 文本长度不足，使用原文本")
+        return text[:max_new_tokens]
+
+    category = infer_chunk_category(page_url)
+    text = text.strip().replace("\x00", "")
+
+    prompt = (
+            f"你正在处理一篇电商平台的知识内容，属于“{category}”类。\n"
+            f"请你根据下方内容提炼其主要信息，要求如下：\n"
+            f"1. 概括要点，不要重复原文原句；\n"
+            f"2. 总长度不超过{max_new_tokens}字，使用简体中文；\n"
+            f"3. 输出格式为完整一句话。\n"
+            f"📂 来源路径：{page_url}\n"
+            f"📄 内容：\n{text}"
         )
-        
-        try:
-            response, _ = model.chat(
-                tokenizer=tokenizer,
-                query=prompt,
-                history=[],
+
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        inputs = tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            return_tensors="pt",
+            return_dict=True,
+        ).to(model.device)
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=True,
-                temperature=0.4,
                 top_p=0.8,
+                temperature=0.4
             )
-            response = response.strip()
-            if response:
-                return response
-            else:
-                print("⚠️ ChatGLM 返回空摘要，启用兜底文本。")
-                return text[:fallback_length]
-        except Exception as e:
-            print(f"⚠️ ChatGLM 摘要生成失败: {e}，启用兜底文本。")
-            return text[:fallback_length]
+        # 裁剪掉 prompt 部分
+        generated_ids = outputs[:, inputs["input_ids"].shape[1]:]
+        response = tokenizer.decode(generated_ids[0], skip_special_tokens=True).strip()
+        return response if response else text[:max_new_tokens]
+    except Exception as e:
+        print(f"⚠️ ChatGLM 摘要生成失败: {e}，使用 fallback")
+        return text[:max_new_tokens]
 
+
+
+# ======================== ChatGLM 问题生成函数 ========================
+def generate_question_ChatGLM(
+    text,
+    page_url,
+    model,
+    tokenizer,
+    max_new_tokens=64,
+    fallback_question="该内容可构造相关业务问题"
+):
+
+    category = infer_chunk_category(page_url)
+    text = text.strip().replace("\x00", "")
+
+    if category == "规则类":
+        hint = "平台是否允许、规则约束、违规处理"
+    elif category == "操作类":
+        hint = "如何操作、是否可用、使用方法"
+    elif category == "信息类":
+        hint = "平台背景、产品定位、策略设计"
+    else:
+        hint = "用户实际可能会问的问题"
+
+    prompt = (
+        f"你是一个电商平台知识问答构建助手，请根据以下内容生成一个有实际价值的用户问题。\n"
+        f"要求：\n"
+        f"- 问题应体现“{hint}”；\n"
+        f"- 禁止复述原文，应提炼操作、判断或咨询点；\n"
+        f"- 只输出一个简体中文问题句，不加说明。\n"
+        f"📂 来源路径：{page_url}\n"
+        f"📄 内容：\n{text}"
+    )
+
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        inputs = tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            return_tensors="pt",
+            return_dict=True,
+        ).to(model.device)
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                top_p=0.9,
+                temperature=0.7
+            )
+        generated_ids = outputs[:, inputs["input_ids"].shape[1]:]
+        response = tokenizer.decode(generated_ids[0], skip_special_tokens=True).strip()
+        return response if response else fallback_question
+    except Exception as e:
+        print(f"⚠️ ChatGLM 问题生成失败: {e}，使用 fallback")
+        return fallback_question
+
+
+
+
+# ======================== 文档块生成函数 ========================
 def generate_block_documents(
     block_tree,
     page_url="unknown.html",
@@ -258,15 +440,18 @@ def generate_block_documents(
         summary = ""
 
         if summary_model and summary_tokenizer:
-            summary = generate_summary_ChatGLM(text, summary_model, summary_tokenizer)
+            summary = generate_summary_ChatGLM(text, page_url, summary_model, summary_tokenizer)
             print(f"✅ 摘要生成成功：{summary}")
+            question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
+            print(f"✅ 问题生成成功：{question}")
 
         doc_meta.append({
             "chunk_idx": pidx,
             "page_name": page_name,
-            "title": title[:64],
+            "title": title[:128],
             "page_url": page_url,
             "summary": summary,
+            "question": question,
             "text": text,
             "time": time_value,
         })

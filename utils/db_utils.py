@@ -25,11 +25,50 @@ from pymilvus import (
     Collection,
 )
 import torch
-from utils.text_process_utils import extract_title_from_block, deduplicate_ranked_blocks, clean_invisible, generate_summary_ChatGLM
+from utils.text_process_utils import extract_title_from_block, deduplicate_ranked_blocks, clean_invisible, generate_summary_ChatGLM, build_optimal_jieba_query
+from time import sleep
 
 
 # 加载自定义词典（适用于电商/运营场景）
 jieba.load_userdict("./user_dict.txt")
+
+
+# ======================== 获取最大全局索引(milvus) ========================
+def get_max_global_idx_milvus(host, collection_name):
+    try:
+        connections.connect(alias="default", host=host, port="19530")
+        collection = Collection(name=collection_name)
+        collection.load()
+        results = collection.query(
+            expr="global_chunk_idx >= 0",
+            output_fields=["global_chunk_idx"]
+        )
+        max_id = max([r["global_chunk_idx"] for r in results], default=0)
+        return max_id + 1
+    except Exception:
+        return 0  # 如果 collection 不存在或查询失败
+
+
+# ======================== 获取最大全局索引（ES） ========================
+def get_max_global_idx_es(host, index_name):
+    try:
+        es = Elasticsearch(f"http://{host}:9200")
+        if not es.indices.exists(index=index_name):
+            return 0
+        res = es.search(
+            index=index_name,
+            body={
+                "size": 1,
+                "sort": [{"global_chunk_idx": {"order": "desc"}}],
+                "_source": ["global_chunk_idx"]
+            }
+        )
+        hits = res.get("hits", {}).get("hits", [])
+        return hits[0]["_source"]["global_chunk_idx"] + 1 if hits else 0
+    except Exception:
+        return 0
+
+
 
 # ======================== ES 索引重建 ========================
 def reset_es(host="192.168.7.247", index_name="test_env"):
@@ -56,25 +95,32 @@ def reset_es(host="192.168.7.247", index_name="test_env"):
             },
             "mappings": {
                 "properties": {
-                    "content": {
+                    "global_chunk_idx": { "type": "long" },
+                    "chunk_idx": { "type": "integer" },
+                    "text": {
                         "type": "text",
                         "analyzer": "ik_max_word",
-                        "fields": {"keyword": {"type": "keyword"}},
+                        "fields": { "keyword": { "type": "keyword" } }
                     },
-                    "chunk_idx": {"type": "integer"},
-                    "page_url": {"type": "keyword"},
+                    "page_url": { "type": "keyword" },
                     "page_name": {
                         "type": "text",
                         "analyzer": "ik_max_word",
-                        "fields": {"keyword": {"type": "keyword"}},
+                        "fields": { "keyword": { "type": "keyword" } }
                     },
                     "title": {
                         "type": "text",
                         "analyzer": "ik_max_word",
-                        "fields": {"keyword": {"type": "keyword"}},
+                        "fields": { "keyword": { "type": "keyword" } }
                     },
+                    "question": {
+                        "type": "text",
+                        "analyzer": "ik_max_word",
+                        "fields": { "keyword": { "type": "keyword" } }
+                    }
                 }
-            },
+            }
+
         },
     )
 
@@ -82,7 +128,11 @@ def reset_es(host="192.168.7.247", index_name="test_env"):
 # ======================== Milvus 向量库重建 ========================
 def reset_milvus(host="localhost", collection_name="test_env", dim=768):
     """重建 Milvus 向量索引集合，字段与 ES 对齐"""
+    token="root:Milvu"
     connections.connect(alias="default", host=host, port="19530")
+    # connections.connect(host="192.168.7.247", port="19530")
+
+
     if utility.has_collection(collection_name):
         print(f"⚠️ Milvus 集合 '{collection_name}' 已存在，正在删除...")
         utility.drop_collection(collection_name)
@@ -98,6 +148,8 @@ def reset_milvus(host="localhost", collection_name="test_env", dim=768):
         FieldSchema(name="title", dtype=DataType.VARCHAR, max_length=512),
         FieldSchema(name="summary", dtype=DataType.VARCHAR, max_length=4096),
         FieldSchema(name="time", dtype=DataType.VARCHAR, max_length=128),
+        FieldSchema(name="question", dtype=DataType.VARCHAR, max_length=1024),
+
     ]
 
     schema = CollectionSchema(fields=fields, description="HTML块向量索引")
@@ -206,23 +258,30 @@ def insert_block_documents(
 
 
 # ======================== 插入 Milvus ========================
-def insert_block_to_milvus(doc_meta_list, embedder, host, collection_name, cnt):
+from langchain_community.vectorstores import Milvus
+from langchain.schema import Document
+from time import sleep
+
+def insert_block_to_milvus(doc_meta_list, embedder, host, collection_name, cnt, batch_size=100):
+    from pymilvus import connections
     connections.connect(alias="default", host=host, port="19530")
     print(f"🧠 正在插入向量到 Milvus collection: {collection_name} ...")
 
-    new_docs = []
+    all_docs = []
     for doc in doc_meta_list:
         local_idx = doc["chunk_idx"]
         global_idx = cnt + local_idx
         doc["global_chunk_idx"] = global_idx
-        node = Document(page_content=doc["text"][:65535], metadata=doc)
-        new_docs.append(node)
-    Milvus.from_documents(
-        new_docs,
+        node = Document(page_content=doc["text"][:10000], metadata=doc)
+        all_docs.append(node)
+
+    # ✅ 第一次初始化（只建 collection & index 一次）
+    milvus = Milvus.from_documents(
+        all_docs[:1],  # 用第一条初始化
         embedder,
         collection_name=collection_name,
         connection_args={
-            "host": "localhost",
+            "host": host,
             "port": "19530",
             "field_map": {
                 "chunk_idx": "chunk_idx",
@@ -233,7 +292,8 @@ def insert_block_to_milvus(doc_meta_list, embedder, host, collection_name, cnt):
                 "page_url": "page_url",
                 "summary": "summary",
                 "time": "time",
-            },
+                "question": "question"
+            }
         },
         index_params={
             "metric_type": "COSINE",
@@ -241,8 +301,19 @@ def insert_block_to_milvus(doc_meta_list, embedder, host, collection_name, cnt):
             "params": {"nlist": 64},
         },
     )
-    print(f"✅ 已插入 Milvus：{len(doc_meta_list)} 条向量")
+
+    # ✅ 后续增量插入
+    for i in range(0, len(all_docs), batch_size):
+        batch = all_docs[i:i + batch_size]
+        try:
+            milvus.add_documents(batch)
+            print(f"✅ 插入 batch {i // batch_size + 1}: {len(batch)} 条")
+        except Exception as e:
+            print(f"❌ 插入 batch 失败: {e}")
+        sleep(0.1)
+
     return cnt + len(doc_meta_list)
+
 
 
 # ======================== 插入 ES ========================
@@ -264,10 +335,11 @@ def insert_block_to_es(doc_meta_list, host, es_index_name, cnt):
                 "global_chunk_idx": global_idx,
                 "title": doc["title"],
                 "summary": doc.get("summary", ""),
-                "text": doc["text"],
+                "text": doc["text"][:10000],
                 "page_url": doc["page_url"],
                 "page_name": doc["page_name"],
                 "time": doc.get("time", ""),
+                "question": doc.get("question", "")
             }
         })
 
@@ -278,23 +350,18 @@ def insert_block_to_es(doc_meta_list, host, es_index_name, cnt):
 
 # ======================== Milvus 查询函数 ========================
 def query_milvus_blocks(
+    host,
     question,
     embedder,
     reranker=None,
     milvus_collection_name="jvliangqianchuan",
     top_k=10,
-    rerank_top_k=5,
-    include_content=True,
+    rerank_top_k=5
 ):
-    print(f"\n🔍 Query (Milvus): {question}")
 
-    print("📦 Connecting to Milvus ...")
-    connections.connect(alias="default", host="localhost", port="19530")
-
+    # print("📦 Connecting to Milvus ...")
+    connections.connect(alias="default", host=host, port="19530")
     collection = Collection(name=milvus_collection_name)
-    collection.load()
-    collection.flush()
-
     if not collection.has_index():
         print(f"⚙️ Creating index on 'vector' ...")
         collection.create_index(
@@ -307,19 +374,19 @@ def query_milvus_blocks(
             index_name="default",
         )
         print("✅ Index created.")
-
+    collection.load()
     query_vec = embedder.embed_query(question)
-    print(f"✅ 查询向量维度: {len(query_vec)}, 范数: {np.linalg.norm(query_vec):.4f}")
+    # print(f"✅ 查询向量维度: {len(query_vec)}, 范数: {np.linalg.norm(query_vec):.4f}")
 
-    print("🔎 Searching Milvus ...")
+    # print("🔎 Searching Milvus ...")
     results = collection.search(
         data=[query_vec],
         anns_field="vector",
         param={"metric_type": "COSINE", "params": {"nprobe": 100}},
         limit=top_k,
-        output_fields=["text", "page_url", "chunk_idx", "page_name", "title", "summary", "time"],
+        output_fields=["text", "page_url", "chunk_idx", "page_name", "title", "summary", "time", "question"],
     )
-    print(results)
+    # print(results)
 
     milvus_rank = []
     for hits in results:
@@ -331,63 +398,44 @@ def query_milvus_blocks(
                 "title": hit.entity.get("title", "none"),
                 "summary": hit.entity.get("summary", ""),
                 "time": hit.entity.get("time", ""),
-                "text": hit.entity.get("text", "") if include_content else "",
+                "text": hit.entity.get("text", ""),
+                "question": hit.entity.get("question", ""),
             })
 
-    print(f"🔎 Milvus 初始返回数量: {len(milvus_rank)}")
-    milvus_rank = deduplicate_ranked_blocks(milvus_rank)
-    print(f"✅ 去重后保留数量: {len(milvus_rank)}")
+    # print(f"🔎 Milvus 初始返回数量: {len(milvus_rank)}")
+    # milvus_rank = deduplicate_ranked_blocks(milvus_rank)
+    # print(f"✅ 去重后保留数量: {len(milvus_rank)}")
 
-    if reranker is not None:
-        milvus_rank = rerank_results(milvus_rank, question, reranker, rerank_top_k)
+    # if reranker is not None:
+    #     milvus_rank = rerank_results(milvus_rank, question, reranker, rerank_top_k)
 
-    print("=" * 60)
-    print("[Milvus] Top Results:")
-    for i, doc in enumerate(milvus_rank):
-        print(f"#{i+1} 🔸 Chunk ID: {doc['chunk_idx']} | summary: {doc['summary']}")
-        print("-" * 100)
-    print("=" * 60)
+    # print("=" * 60)
+    # print("[Milvus] Top Results:")
+    # for i, doc in enumerate(milvus_rank):
+    #     print(f"#{i+1} 🔸 Chunk ID: {doc['chunk_idx']} | summary: {doc['summary']}")
+    #     print("-" * 100)
+    # print("=" * 60)
 
     return milvus_rank
 
 
 # ======================== ES 查询函数 ========================
+
 def query_es_blocks(
+    host,
     question,
     es_index_name="jvliangqianchuan",
-    top_k=10,
-    include_content=True,
+    top_k=10
 ):
-    print(f"\n🔍 Query (Elasticsearch): {question}")
-    from elasticsearch import Elasticsearch
-    import jieba
-    from utils.text_process_utils import deduplicate_ranked_blocks
+    es = Elasticsearch(f"http://{host}:9200")
+    
+    keywords = jieba.analyse.extract_tags(question, topK=8, withWeight=True)
+    keywords = [_[0] for _ in keywords if _[1] > 1]
+    print("Keywords:", keywords)
 
-    es = Elasticsearch("http://localhost:9200")
-
-    def jieba_tokenize(text):
-        return [t for t in jieba.cut(text) if t.strip()]
-
-    def build_optimal_jieba_query(tokens, field_cfg):
-        should_clauses = []
-        for token in tokens:
-            for field, cfg in field_cfg.items():
-                clause = {
-                    "match": {
-                        field: {
-                            "query": token,
-                            "boost": cfg["boost"]
-                        }
-                    }
-                }
-                if cfg.get("fuzzy"):
-                    clause["match"][field]["fuzziness"] = "AUTO"
-                should_clauses.append(clause)
-        return {"query": {"bool": {"should": should_clauses}}}
-
-    keywords = jieba_tokenize(question)
-    es_query = build_optimal_jieba_query(keywords, {"content": {"boost": 1.0, "fuzzy": True}})
-    es_response = es.search(index=es_index_name, body=es_query, size=top_k)
+    fields_config = {"text": {"boost": 1}, "title": {"boost": 2}}
+    query = build_optimal_jieba_query(keywords, fields_config)
+    es_response = es.search(index=es_index_name, query=query.get("query", {}), size=top_k)
 
     es_rank = [
         {
@@ -397,19 +445,17 @@ def query_es_blocks(
             "title": hit["_source"].get("title", "none"),
             "summary": hit["_source"].get("summary", ""),
             "time": hit["_source"].get("time", ""),
-            "content": hit["_source"].get("content", "") if include_content else "",
+            "question": hit["_source"].get("question", ""),
+            "text": hit["_source"].get("text", ""),
         } for hit in es_response["hits"]["hits"]
     ]
 
-    es_rank = deduplicate_ranked_blocks(es_rank)
-    print(f"[ES] Top {top_k}:")
-    for doc in es_rank:
-        print("-" * 100)
-        print(doc)
-    print("-" * 100)
-    print("=" * 60)
 
     return es_rank
+
+
+
+
 
 
 

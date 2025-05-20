@@ -72,12 +72,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--html_dir", type=str, default="./总知识库_cleaned")
     parser.add_argument("--lang", type=str, default="zh")
-    parser.add_argument("--embed_model", type=str, default="../htmlRAG/bce-embedding-base_v1")
-    parser.add_argument("--summary_tokenizer", type=str, default="../htmlRAG/chatglm3-6b")
-    parser.add_argument("--summary_model", type=str, default="../htmlRAG/chatglm3-6b")
+    parser.add_argument("--embed_model", type=str, default="/data/huangruizhi/htmlRAG/bce-embedding-base_v1")
+    # parser.add_argument("--summary_tokenizer", type=str, default="/data/huangruizhi/htmlRAG/chatglm3-6b")
+    # parser.add_argument("--summary_model", type=str, default="/data/huangruizhi/htmlRAG/chatglm3-6b")
+    parser.add_argument("--summary_tokenizer", type=str, default="THUDM/glm-4-9b-chat")
+    parser.add_argument("--summary_model", type=str, default="THUDM/glm-4-9b-chat")
     parser.add_argument("--max_node_words_embed", type=int, default=4096)
     parser.add_argument("--min_node_words_embed", type=int, default=48)
     args = parser.parse_args()
+
 
     # 加载模型（可注释掉摘要部分以加速）
     device = "cuda" if torch.cuda.is_available() else "cpu"

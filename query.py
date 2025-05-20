@@ -21,7 +21,7 @@ if __name__ == "__main__":
     parser.add_argument("--question", type=str, default="如何运营巨量千川平台")
     parser.add_argument("--lang", type=str, default="zh")
     parser.add_argument("--index_name", type=str, default="test_env")
-    parser.add_argument("--embed_model", type=str, default="../htmlRAG/bce-embedding-base_v1")
+    parser.add_argument("--embed_model", type=str, default="/data/huangruizhi/htmlRAG/bce-embedding-base_v1")
     parser.add_argument("--rerank_model", type=str, default="maidalun1020/bce-reranker-base_v1")
     parser.add_argument("--top_k", type=int, default=5)
     parser.add_argument("--device", type=int, default=0)
