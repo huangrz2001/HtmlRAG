@@ -1,0 +1,15 @@
+{"time":"2025-05-21T01:47:53.2716833-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250521_014753-ipex26sf/logs/debug-core.log"}
+{"time":"2025-05-21T01:47:54.59400811-04:00","level":"INFO","msg":"created new stream","id":"ipex26sf"}
+{"time":"2025-05-21T01:47:54.594037081-04:00","level":"INFO","msg":"stream: started","id":"ipex26sf"}
+{"time":"2025-05-21T01:47:54.594045531-04:00","level":"INFO","msg":"handler: started","stream_id":"ipex26sf"}
+{"time":"2025-05-21T01:47:54.594050701-04:00","level":"INFO","msg":"sender: started","stream_id":"ipex26sf"}
+{"time":"2025-05-21T01:47:54.594057661-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"ipex26sf"}
+{"time":"2025-05-21T01:47:55.095877987-04:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-21T01:48:41.641311058-04:00","level":"INFO","msg":"stream: closing","id":"ipex26sf"}
+{"time":"2025-05-21T01:48:41.641335589-04:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-21T01:48:41.641353329-04:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-05-21T01:48:42.76347802-04:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-05-21T01:48:43.702613672-04:00","level":"INFO","msg":"handler: closed","stream_id":"ipex26sf"}
+{"time":"2025-05-21T01:48:43.702645303-04:00","level":"INFO","msg":"writer: Close: closed","stream_id":"ipex26sf"}
+{"time":"2025-05-21T01:48:43.702651733-04:00","level":"INFO","msg":"sender: closed","stream_id":"ipex26sf"}
+{"time":"2025-05-21T01:48:43.702711964-04:00","level":"INFO","msg":"stream: closed","id":"ipex26sf"}

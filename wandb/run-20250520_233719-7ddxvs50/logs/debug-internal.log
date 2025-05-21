@@ -1,0 +1,10 @@
+{"time":"2025-05-20T23:37:19.530206774-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250520_233719-7ddxvs50/logs/debug-core.log"}
+{"time":"2025-05-20T23:37:20.496034628-04:00","level":"INFO","msg":"created new stream","id":"7ddxvs50"}
+{"time":"2025-05-20T23:37:20.496055959-04:00","level":"INFO","msg":"stream: started","id":"7ddxvs50"}
+{"time":"2025-05-20T23:37:20.496067739-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"7ddxvs50"}
+{"time":"2025-05-20T23:37:20.496068689-04:00","level":"INFO","msg":"sender: started","stream_id":"7ddxvs50"}
+{"time":"2025-05-20T23:37:20.496341646-04:00","level":"INFO","msg":"handler: started","stream_id":"7ddxvs50"}
+{"time":"2025-05-20T23:37:20.943903416-04:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-20T23:37:30.712041179-04:00","level":"INFO","msg":"stream: closing","id":"7ddxvs50"}
+{"time":"2025-05-20T23:37:30.71206495-04:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-20T23:37:30.712114201-04:00","level":"INFO","msg":"Stopped system monitor"}

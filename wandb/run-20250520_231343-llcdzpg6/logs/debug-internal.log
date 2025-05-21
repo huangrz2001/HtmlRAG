@@ -1,0 +1,16 @@
+{"time":"2025-05-20T23:13:43.359788434-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250520_231343-llcdzpg6/logs/debug-core.log"}
+{"time":"2025-05-20T23:13:44.279216861-04:00","level":"INFO","msg":"created new stream","id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:44.279241023-04:00","level":"INFO","msg":"stream: started","id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:44.279249753-04:00","level":"INFO","msg":"handler: started","stream_id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:44.279287265-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:44.279288315-04:00","level":"INFO","msg":"sender: started","stream_id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:44.82566499-04:00","level":"INFO","msg":"stream: closing","id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:45.736102249-04:00","level":"ERROR","msg":"HTTP error","status":404,"method":"POST","url":"https://api.wandb.ai/graphql"}
+{"time":"2025-05-20T23:13:45.736182214-04:00","level":"ERROR","msg":"runfiles: CreateRunFiles returned error: returned error 404: {\"data\":{\"createRunFiles\":null},\"errors\":[{\"message\":\"project /reranker-bce not found during createRunFiles\",\"path\":[\"createRunFiles\"]}]}"}
+{"time":"2025-05-20T23:13:45.736103139-04:00","level":"ERROR","msg":"HTTP error","status":404,"method":"POST","url":"https://api.wandb.ai/graphql"}
+{"time":"2025-05-20T23:13:45.736226476-04:00","level":"ERROR","msg":"runfiles: CreateRunFiles returned error: returned error 404: {\"data\":{\"createRunFiles\":null},\"errors\":[{\"message\":\"project /reranker-bce not found during createRunFiles\",\"path\":[\"createRunFiles\"]}]}"}
+{"time":"2025-05-20T23:13:45.73647507-04:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-05-20T23:13:45.736506611-04:00","level":"INFO","msg":"handler: closed","stream_id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:45.736524072-04:00","level":"INFO","msg":"writer: Close: closed","stream_id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:45.736554584-04:00","level":"INFO","msg":"sender: closed","stream_id":"llcdzpg6"}
+{"time":"2025-05-20T23:13:45.736560374-04:00","level":"INFO","msg":"stream: closed","id":"llcdzpg6"}

@@ -430,7 +430,7 @@ def query_es_blocks(
     es = Elasticsearch(f"http://{host}:9200")
     
     keywords = jieba.analyse.extract_tags(question, topK=8, withWeight=True)
-    keywords = [_[0] for _ in keywords if _[1] > 1]
+    keywords = [_[0] for _ in keywords if _[1] > 0.0]
     print("Keywords:", keywords)
 
     fields_config = {"text": {"boost": 1}, "title": {"boost": 2}}

@@ -1,0 +1,48 @@
+{
+  "os": "Linux-6.1.0-12-amd64-x86_64-with-glibc2.36",
+  "python": "CPython 3.9.21",
+  "startedAt": "2025-05-21T02:29:10.718603Z",
+  "program": "/home/algo/hrz/db_construct/reranker_ft.py",
+  "codePath": "reranker_ft.py",
+  "git": {
+    "remote": "git@192.168.20.122:zlsd-algorithm/customer_service/db_construct.git",
+    "commit": "2ac4faed00e70c20e7b0c8793ebb4eb97b9b557e"
+  },
+  "email": "1295273096@qq.com",
+  "root": "/home/algo/hrz/db_construct",
+  "host": "debian249",
+  "executable": "/home/algo/miniconda3/envs/htmlRAG/bin/python3",
+  "codePathLocal": "reranker_ft.py",
+  "cpu_count": 8,
+  "cpu_count_logical": 16,
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "gpu_count": 2,
+  "disk": {
+    "/": {
+      "total": "469879627776",
+      "used": "337065582592"
+    }
+  },
+  "memory": {
+    "total": "134999658496"
+  },
+  "cpu": {
+    "count": 8,
+    "countLogical": 16
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 4090",
+      "memoryTotal": "25757220864",
+      "cudaCores": 16384,
+      "architecture": "Ada"
+    },
+    {
+      "name": "NVIDIA GeForce RTX 4090",
+      "memoryTotal": "25757220864",
+      "cudaCores": 16384,
+      "architecture": "Ada"
+    }
+  ],
+  "cudaVersion": "12.0"
+}

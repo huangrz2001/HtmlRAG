@@ -1,0 +1,13 @@
+✅ 模型加载完成 cuda
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 66, in <module>
+    model.fit(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/fit_mixin.py", line 251, in fit
+    raise ImportError("Please install `datasets` to use this function: `pip install datasets`.")
+ImportError: Please install `datasets` to use this function: `pip install datasets`.
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 66, in <module>
+    model.fit(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/fit_mixin.py", line 251, in fit
+    raise ImportError("Please install `datasets` to use this function: `pip install datasets`.")
+ImportError: Please install `datasets` to use this function: `pip install datasets`.

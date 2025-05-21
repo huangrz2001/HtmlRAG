@@ -1,0 +1,33 @@
+🌀 Epoch 1/3
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 92, in <module>
+    for step, batch in enumerate(train_dataloader):
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/accelerate/data_loader.py", line 566, in __iter__
+    current_batch = next(dataloader_iter)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 701, in __next__
+    data = self._next_data()
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 757, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 55, in fetch
+    return self.collate_fn(data)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/_utils/collate.py", line 398, in default_collate
+    return collate(batch, collate_fn_map=default_collate_fn_map)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/_utils/collate.py", line 240, in collate
+    raise TypeError(default_collate_err_msg_format.format(elem_type))
+TypeError: default_collate: batch must contain tensors, numpy arrays, numbers, dicts or lists; found <class 'sentence_transformers.readers.InputExample.InputExample'>
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/algo/hrz/db_construct/reranker_ft.py", line 92, in <module>
+[rank0]:     for step, batch in enumerate(train_dataloader):
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/accelerate/data_loader.py", line 566, in __iter__
+[rank0]:     current_batch = next(dataloader_iter)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 701, in __next__
+[rank0]:     data = self._next_data()
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 757, in _next_data
+[rank0]:     data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 55, in fetch
+[rank0]:     return self.collate_fn(data)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/_utils/collate.py", line 398, in default_collate
+[rank0]:     return collate(batch, collate_fn_map=default_collate_fn_map)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/utils/data/_utils/collate.py", line 240, in collate
+[rank0]:     raise TypeError(default_collate_err_msg_format.format(elem_type))
+[rank0]: TypeError: default_collate: batch must contain tensors, numpy arrays, numbers, dicts or lists; found <class 'sentence_transformers.readers.InputExample.InputExample'>

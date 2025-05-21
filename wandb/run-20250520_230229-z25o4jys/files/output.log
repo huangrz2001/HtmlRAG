@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 59, in <module>
+    model = CrossEncoder(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/util.py", line 39, in wrapper
+    return func(self, *args, **kwargs)
+TypeError: __init__() got an unexpected keyword argument 'pretrained_model_name_or_path'
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 59, in <module>
+    model = CrossEncoder(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/util.py", line 39, in wrapper
+    return func(self, *args, **kwargs)
+TypeError: __init__() got an unexpected keyword argument 'pretrained_model_name_or_path'

@@ -131,7 +131,7 @@ if __name__ == "__main__":
     Milvus_host = "192.168.7.247"
     ES_host = "192.168.7.247"
     COLLECTION_NAME = "test_env"
-    SAMPLE_SIZE = 300
+    SAMPLE_SIZE = 2500
     top_k = 2
     OUTPUT_PATH = "reranker_qa_dataset.jsonl"
     

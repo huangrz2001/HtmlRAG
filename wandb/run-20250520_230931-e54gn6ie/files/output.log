@@ -1,0 +1,10 @@
+cuda
+模型加载完成
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 68, in <module>
+    model.fit(
+TypeError: fit() got an unexpected keyword argument 'train_data'
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 68, in <module>
+    model.fit(
+TypeError: fit() got an unexpected keyword argument 'train_data'

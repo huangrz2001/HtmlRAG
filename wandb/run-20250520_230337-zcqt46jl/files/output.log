@@ -1,0 +1,56 @@
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 59, in <module>
+    model = CrossEncoder(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/util.py", line 39, in wrapper
+    return func(self, *args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/CrossEncoder.py", line 178, in __init__
+    self._load_model(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/CrossEncoder.py", line 239, in _load_model
+    self.model: PreTrainedModel = AutoModelForSequenceClassification.from_pretrained(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/auto/auto_factory.py", line 563, in from_pretrained
+    return model_class.from_pretrained(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 3754, in from_pretrained
+    ) = cls._load_pretrained_model(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 4162, in _load_pretrained_model
+    error_msgs = _load_state_dict_into_model(model_to_load, state_dict, start_prefix)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 703, in _load_state_dict_into_model
+    load(model_to_load, state_dict, prefix=start_prefix)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 701, in load
+    load(child, state_dict, prefix + name + ".")
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 701, in load
+    load(child, state_dict, prefix + name + ".")
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 701, in load
+    load(child, state_dict, prefix + name + ".")
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 697, in load
+    module._load_from_state_dict(*args)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 2441, in _load_from_state_dict
+    param.copy_(input_param)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 59, in <module>
+    model = CrossEncoder(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/util.py", line 39, in wrapper
+    return func(self, *args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/CrossEncoder.py", line 178, in __init__
+    self._load_model(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/sentence_transformers/cross_encoder/CrossEncoder.py", line 239, in _load_model
+    self.model: PreTrainedModel = AutoModelForSequenceClassification.from_pretrained(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/auto/auto_factory.py", line 563, in from_pretrained
+    return model_class.from_pretrained(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 3754, in from_pretrained
+    ) = cls._load_pretrained_model(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 4162, in _load_pretrained_model
+    error_msgs = _load_state_dict_into_model(model_to_load, state_dict, start_prefix)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 703, in _load_state_dict_into_model
+    load(model_to_load, state_dict, prefix=start_prefix)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 701, in load
+    load(child, state_dict, prefix + name + ".")
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 701, in load
+    load(child, state_dict, prefix + name + ".")
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 701, in load
+    load(child, state_dict, prefix + name + ".")
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/modeling_utils.py", line 697, in load
+    module._load_from_state_dict(*args)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 2441, in _load_from_state_dict
+    param.copy_(input_param)
+KeyboardInterrupt

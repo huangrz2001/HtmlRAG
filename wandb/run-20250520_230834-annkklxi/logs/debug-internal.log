@@ -1,0 +1,15 @@
+{"time":"2025-05-20T23:08:34.677445843-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250520_230834-annkklxi/logs/debug-core.log"}
+{"time":"2025-05-20T23:08:35.70985575-04:00","level":"INFO","msg":"created new stream","id":"annkklxi"}
+{"time":"2025-05-20T23:08:35.709881121-04:00","level":"INFO","msg":"stream: started","id":"annkklxi"}
+{"time":"2025-05-20T23:08:35.709897021-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"annkklxi"}
+{"time":"2025-05-20T23:08:35.709908701-04:00","level":"INFO","msg":"sender: started","stream_id":"annkklxi"}
+{"time":"2025-05-20T23:08:35.709906691-04:00","level":"INFO","msg":"handler: started","stream_id":"annkklxi"}
+{"time":"2025-05-20T23:08:36.167956381-04:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-20T23:09:17.313336045-04:00","level":"INFO","msg":"stream: closing","id":"annkklxi"}
+{"time":"2025-05-20T23:09:17.313362865-04:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-20T23:09:17.313401066-04:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-05-20T23:09:18.513360158-04:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-05-20T23:09:19.294480607-04:00","level":"INFO","msg":"handler: closed","stream_id":"annkklxi"}
+{"time":"2025-05-20T23:09:19.294509788-04:00","level":"INFO","msg":"writer: Close: closed","stream_id":"annkklxi"}
+{"time":"2025-05-20T23:09:19.294515908-04:00","level":"INFO","msg":"sender: closed","stream_id":"annkklxi"}
+{"time":"2025-05-20T23:09:19.294547638-04:00","level":"INFO","msg":"stream: closed","id":"annkklxi"}

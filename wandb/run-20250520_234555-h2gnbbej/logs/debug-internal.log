@@ -1,0 +1,10 @@
+{"time":"2025-05-20T23:45:55.494981498-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250520_234555-h2gnbbej/logs/debug-core.log"}
+{"time":"2025-05-20T23:45:56.555948907-04:00","level":"INFO","msg":"created new stream","id":"h2gnbbej"}
+{"time":"2025-05-20T23:45:56.555970558-04:00","level":"INFO","msg":"stream: started","id":"h2gnbbej"}
+{"time":"2025-05-20T23:45:56.555989569-04:00","level":"INFO","msg":"sender: started","stream_id":"h2gnbbej"}
+{"time":"2025-05-20T23:45:56.555987339-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"h2gnbbej"}
+{"time":"2025-05-20T23:45:56.556004869-04:00","level":"INFO","msg":"handler: started","stream_id":"h2gnbbej"}
+{"time":"2025-05-20T23:45:56.983858224-04:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-20T23:46:30.592326463-04:00","level":"INFO","msg":"stream: closing","id":"h2gnbbej"}
+{"time":"2025-05-20T23:46:30.592346694-04:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-20T23:46:30.592361135-04:00","level":"INFO","msg":"Stopped system monitor"}

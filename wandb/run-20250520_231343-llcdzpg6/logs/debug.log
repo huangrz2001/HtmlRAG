@@ -1,0 +1,34 @@
+2025-05-20 23:13:43,345 INFO    MainThread:2652141 [wandb_setup.py:_flush():70] Current SDK version is 0.19.11
+2025-05-20 23:13:43,345 INFO    MainThread:2652141 [wandb_setup.py:_flush():70] Configure stats pid to 2652141
+2025-05-20 23:13:43,345 INFO    MainThread:2652141 [wandb_setup.py:_flush():70] Loading settings from /home/algo/.config/wandb/settings
+2025-05-20 23:13:43,345 INFO    MainThread:2652141 [wandb_setup.py:_flush():70] Loading settings from /home/algo/hrz/db_construct/wandb/settings
+2025-05-20 23:13:43,345 INFO    MainThread:2652141 [wandb_setup.py:_flush():70] Loading settings from environment variables
+2025-05-20 23:13:43,345 INFO    MainThread:2652141 [wandb_init.py:setup_run_log_directory():724] Logging user logs to /home/algo/hrz/db_construct/wandb/run-20250520_231343-llcdzpg6/logs/debug.log
+2025-05-20 23:13:43,345 INFO    MainThread:2652141 [wandb_init.py:setup_run_log_directory():725] Logging internal logs to /home/algo/hrz/db_construct/wandb/run-20250520_231343-llcdzpg6/logs/debug-internal.log
+2025-05-20 23:13:43,346 INFO    MainThread:2652141 [wandb_init.py:init():852] calling init triggers
+2025-05-20 23:13:43,346 INFO    MainThread:2652141 [wandb_init.py:init():857] wandb.init called with sweep_config: {}
+config: {'model': '/data/huangruizhi/htmlRAG/bce-reranker-base_v1', 'batch_size': 64, 'epochs': 3, 'lr': 2e-05, 'max_length': 512, '_wandb': {}}
+2025-05-20 23:13:43,346 INFO    MainThread:2652141 [wandb_init.py:init():893] starting backend
+2025-05-20 23:13:43,346 INFO    MainThread:2652141 [wandb_init.py:init():897] sending inform_init request
+2025-05-20 23:13:43,358 INFO    MainThread:2652141 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2025-05-20 23:13:43,358 INFO    MainThread:2652141 [wandb_init.py:init():907] backend started and connected
+2025-05-20 23:13:43,361 INFO    MainThread:2652141 [wandb_init.py:init():1005] updated telemetry
+2025-05-20 23:13:43,372 INFO    MainThread:2652141 [wandb_init.py:init():1029] communicating run to backend with 90.0 second timeout
+2025-05-20 23:13:44,625 WARNING MainThread:2652141 [wandb_init.py:init():1681] [no run ID] interrupted
+Traceback (most recent call last):
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/wandb/sdk/wandb_init.py", line 1677, in init
+    return wi.init(run_settings, run_config, run_printer)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/wandb/sdk/wandb_init.py", line 1055, in init
+    result = wait_with_progress(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/wandb/sdk/mailbox/wait_with_progress.py", line 24, in wait_with_progress
+    return wait_all_with_progress(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/wandb/sdk/mailbox/wait_with_progress.py", line 87, in wait_all_with_progress
+    return asyncio_compat.run(progress_loop_with_timeout)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/wandb/sdk/lib/asyncio_compat.py", line 30, in run
+    return future.result()
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/concurrent/futures/_base.py", line 441, in result
+    self._condition.wait(timeout)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/threading.py", line 312, in wait
+    waiter.acquire()
+KeyboardInterrupt
+2025-05-20 23:13:44,825 INFO    MsgRouterThr:2652141 [mailbox.py:close():129] [no run ID] Closing mailbox, abandoning 0 handles.
