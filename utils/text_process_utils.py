@@ -214,69 +214,82 @@ def build_optimal_jieba_query(
 
 
 # ======================== 检索结果去重函数（适用于 Milvus/ES） ========================
+from datetime import datetime
+from difflib import SequenceMatcher
+
+from datetime import datetime
+from difflib import SequenceMatcher
+
+from datetime import datetime
+from difflib import SequenceMatcher
 
 def deduplicate_ranked_blocks(docs: list,
                               threshold_content=0.9,
-                              threshold_page_name=0.6) -> list:
+                              threshold_page_name=0.6,
+                              window: int = 3) -> list:
     """
-    去重检索结果列表，判断依据：
-    - 文本内容相似度 >= threshold_content
-    - 页面名相似度 >= threshold_page_name
-    - 若重复，保留 time 较新的文档块（格式为 'YYYY-MM-DD HH:MM:SS'）
+    多窗口滑动去重逻辑（带详细打印）：
+    - 若后续 window 个块中存在重复，则用时间更新最新项，继续滑动比较
+    - 直到无重复，保留该块并继续下一个
     """
-    if len(docs) <= 1:
-        return docs
-
-    keep = []
-    seen = set()
-
     def parse_time(t: str) -> datetime:
         try:
             return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
         except Exception:
-            return datetime.min  # 空字符串或非法格式视为最旧
+            return datetime.min
 
-    for i, base in enumerate(docs):
+    def str_sim(a: str, b: str) -> float:
+        return SequenceMatcher(None, a, b).ratio()
+
+    seen = set()
+    keep = []
+    i = 0
+
+    while i < len(docs):
         if i in seen:
+            i += 1
             continue
 
+        base = docs[i]
         base_text = clean_text(base.get("text", ""))
         base_name = clean_text(base.get("page_name", ""))
         base_time = parse_time(base.get("time", ""))
         best_doc = base
+        best_time = base_time
 
-        for j in range(i + 1, len(docs)):
+        # print(f"\n🟩 当前基准块 i={i}：")
+        # print(f"🔹标题: {base.get('page_name', '')}")
+        # print(f"🔹时间: {base.get('time', '')}")
+        # print(f"🔹内容前50字: {base.get('text', '')[:50]}")
+
+        for j in range(i + 1, min(i + 1 + window, len(docs))):
             if j in seen:
                 continue
 
             comp = docs[j]
-            comp_text = clean_text(comp.get("text", ""))
-            comp_name = clean_text(comp.get("page_name", ""))
-            comp_time = parse_time(comp.get("time", ""))
-
-            try:
-                vectorizer = TfidfVectorizer(tokenizer=jieba_cut_clean)
-                sim_text = cosine_similarity(vectorizer.fit_transform([base_text, comp_text]))[0, 1]
-                sim_name = cosine_similarity(vectorizer.fit_transform([base_name, comp_name]))[0, 1]
-            except Exception as e:
-                print(f"⚠️ 相似度计算失败: {e}")
-                continue
+            sim_text = str_sim(base_text, clean_text(comp.get("text", "")))
+            sim_name = str_sim(base_name, clean_text(comp.get("page_name", "")))
 
             if sim_text >= threshold_content and sim_name >= threshold_page_name:
-                # print(f"\n🔍 比较块 i={i} vs j={j}")
-                # print(f"📎 内容相似度: {sim_text:.3f}，标题相似度: {sim_name:.3f}")
-                if comp_time > base_time:
-                    # print("⛔️ j 时间更新，替换 i 并标记 i 为已处理\n" + "=" * 80)
+                comp_time = parse_time(comp.get("time", ""))
+                seen.add(j)
+
+                # print(f"\n⚠️ 发现重复块 j={j}：")
+                # print(f"   - 标题相似度: {sim_name:.3f}，内容相似度: {sim_text:.3f}")
+                # print(f"   - 标题: {comp.get('page_name', '')}")
+                # print(f"   - 时间: {comp.get('time', '')}")
+                # print(f"   - 内容前50字: {comp.get('text', '')[:50]}")
+
+                if comp_time > best_time:
                     seen.add(i)
                     best_doc = comp
-                    base_time = comp_time  # 更新为新的时间
-                    break  # j 替换了 i，则不再继续处理 i
-                else:
-                    # print("⛔️ 判为重复，跳过块 j\n" + "=" * 80)
-                    seen.add(j)
+                    best_time = comp_time
+                    # print("✅ 当前块被替换为较新的重复块")
 
         keep.append(best_doc)
+        i += 1
 
+    print(f"\n✅ 去重完成，原始 {len(docs)} 个块，保留 {len(keep)} 个块\n")
     return keep
 
 

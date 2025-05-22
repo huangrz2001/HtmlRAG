@@ -1,0 +1,15 @@
+{"time":"2025-05-21T05:24:03.569598445-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250521_052403-le64cuvt/logs/debug-core.log"}
+{"time":"2025-05-21T05:24:04.522619113-04:00","level":"INFO","msg":"created new stream","id":"le64cuvt"}
+{"time":"2025-05-21T05:24:04.522641323-04:00","level":"INFO","msg":"stream: started","id":"le64cuvt"}
+{"time":"2025-05-21T05:24:04.522654583-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"le64cuvt"}
+{"time":"2025-05-21T05:24:04.522665043-04:00","level":"INFO","msg":"sender: started","stream_id":"le64cuvt"}
+{"time":"2025-05-21T05:24:04.522892557-04:00","level":"INFO","msg":"handler: started","stream_id":"le64cuvt"}
+{"time":"2025-05-21T05:24:05.803847525-04:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-21T05:24:29.895109449-04:00","level":"INFO","msg":"stream: closing","id":"le64cuvt"}
+{"time":"2025-05-21T05:24:29.895134469-04:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-21T05:24:29.895157209-04:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-05-21T05:24:31.014199337-04:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-05-21T05:24:31.916302275-04:00","level":"INFO","msg":"handler: closed","stream_id":"le64cuvt"}
+{"time":"2025-05-21T05:24:31.916332716-04:00","level":"INFO","msg":"writer: Close: closed","stream_id":"le64cuvt"}
+{"time":"2025-05-21T05:24:31.916340746-04:00","level":"INFO","msg":"sender: closed","stream_id":"le64cuvt"}
+{"time":"2025-05-21T05:24:31.916388887-04:00","level":"INFO","msg":"stream: closed","id":"le64cuvt"}

@@ -1,0 +1,7 @@
+{"time":"2025-05-21T05:41:59.129522133-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250521_054159-hf99uxmg/logs/debug-core.log"}
+{"time":"2025-05-21T05:42:00.13783682-04:00","level":"INFO","msg":"created new stream","id":"hf99uxmg"}
+{"time":"2025-05-21T05:42:00.137857251-04:00","level":"INFO","msg":"stream: started","id":"hf99uxmg"}
+{"time":"2025-05-21T05:42:00.137871051-04:00","level":"INFO","msg":"sender: started","stream_id":"hf99uxmg"}
+{"time":"2025-05-21T05:42:00.137870751-04:00","level":"INFO","msg":"handler: started","stream_id":"hf99uxmg"}
+{"time":"2025-05-21T05:42:00.138467762-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"hf99uxmg"}
+{"time":"2025-05-21T05:42:00.747840355-04:00","level":"INFO","msg":"Starting system monitor"}

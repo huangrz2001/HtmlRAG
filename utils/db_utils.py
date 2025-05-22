@@ -402,9 +402,9 @@ def query_milvus_blocks(
                 "question": hit.entity.get("question", ""),
             })
 
-    # print(f"🔎 Milvus 初始返回数量: {len(milvus_rank)}")
-    # milvus_rank = deduplicate_ranked_blocks(milvus_rank)
-    # print(f"✅ 去重后保留数量: {len(milvus_rank)}")
+    print(f"🔎 Milvus 初始返回数量: {len(milvus_rank)}")
+    milvus_rank = deduplicate_ranked_blocks(milvus_rank)
+    print(f"✅ 去重后保留数量: {len(milvus_rank)}")
 
     # if reranker is not None:
     #     milvus_rank = rerank_results(milvus_rank, question, reranker, rerank_top_k)

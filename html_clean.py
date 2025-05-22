@@ -14,7 +14,7 @@ HTML 批量清洗与结构简化脚本
 import os
 import re
 import shutil
-from utils.html_utils import clean_html
+from utils.html_utils import clean_html, expand_table_spans
 
 # ---------------------------
 # 基础清洗函数
@@ -65,6 +65,8 @@ def process_html_file(source_path, target_path):
     simplified_html = clean_special_markdown_tags(simplified_html)
     simplified_html = remove_tag_newlines(simplified_html)
     simplified_html = remove_tag_whitespace(simplified_html)
+    simplified_html = expand_table_spans(simplified_html)
+
 
     # 将 <time> 标签补回开头
     final_html = time_tag + simplified_html

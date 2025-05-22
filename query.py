@@ -60,11 +60,11 @@ if __name__ == "__main__":
         # )
 
         query_milvus_blocks(
+            "192.168.7.247",
             question,
             embedder,
             reranker=reranker,
             milvus_collection_name=args.index_name,
-            top_k=20,
-            rerank_top_k=5,
-            include_content=True,
+            top_k=100,
+            rerank_top_k=5
         )

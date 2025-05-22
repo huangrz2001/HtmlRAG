@@ -1,0 +1,111 @@
+
+🔁 Epoch 1/10
+Loss: 0.6308:   2%|█▉                                                                                                        | 2/108 [00:01<01:31,  1.16it/s]
+Traceback (most recent call last):
+  File "/home/algo/hrz/db_construct/reranker_ft.py", line 95, in <module>
+    outputs = model.model(**batch)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/parallel/distributed.py", line 1643, in forward
+    else self._run_ddp_forward(*inputs, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/parallel/distributed.py", line 1459, in _run_ddp_forward
+    return self.module(*inputs, **kwargs)  # type: ignore[index]
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/accelerate/utils/operations.py", line 818, in forward
+    return model_forward(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/accelerate/utils/operations.py", line 806, in __call__
+    return convert_to_fp32(self.model_forward(*args, **kwargs))
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/amp/autocast_mode.py", line 44, in decorate_autocast
+    return func(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 1205, in forward
+    outputs = self.roberta(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 834, in forward
+    encoder_outputs = self.encoder(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 522, in forward
+    layer_outputs = layer_module(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 411, in forward
+    self_attention_outputs = self.attention(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 338, in forward
+    self_outputs = self.self(
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 254, in forward
+    attention_scores = attention_scores + attention_mask
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 288.00 MiB. GPU 0 has a total capacity of 23.65 GiB of which 14.81 MiB is free. Process 1457785 has 1.29 GiB memory in use. Process 1457798 has 1.29 GiB memory in use. Process 3011973 has 2.59 GiB memory in use. Process 3012218 has 3.45 GiB memory in use. Including non-PyTorch memory, this process has 15.01 GiB memory in use. Of the allocated memory 13.33 GiB is allocated by PyTorch, and 251.01 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/algo/hrz/db_construct/reranker_ft.py", line 95, in <module>
+[rank0]:     outputs = model.model(**batch)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/parallel/distributed.py", line 1643, in forward
+[rank0]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/parallel/distributed.py", line 1459, in _run_ddp_forward
+[rank0]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/accelerate/utils/operations.py", line 818, in forward
+[rank0]:     return model_forward(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/accelerate/utils/operations.py", line 806, in __call__
+[rank0]:     return convert_to_fp32(self.model_forward(*args, **kwargs))
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/amp/autocast_mode.py", line 44, in decorate_autocast
+[rank0]:     return func(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 1205, in forward
+[rank0]:     outputs = self.roberta(
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 834, in forward
+[rank0]:     encoder_outputs = self.encoder(
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 522, in forward
+[rank0]:     layer_outputs = layer_module(
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 411, in forward
+[rank0]:     self_attention_outputs = self.attention(
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 338, in forward
+[rank0]:     self_outputs = self.self(
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/algo/miniconda3/envs/htmlRAG/lib/python3.9/site-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py", line 254, in forward
+[rank0]:     attention_scores = attention_scores + attention_mask
+[rank0]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 288.00 MiB. GPU 0 has a total capacity of 23.65 GiB of which 14.81 MiB is free. Process 1457785 has 1.29 GiB memory in use. Process 1457798 has 1.29 GiB memory in use. Process 3011973 has 2.59 GiB memory in use. Process 3012218 has 3.45 GiB memory in use. Including non-PyTorch memory, this process has 15.01 GiB memory in use. Of the allocated memory 13.33 GiB is allocated by PyTorch, and 251.01 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

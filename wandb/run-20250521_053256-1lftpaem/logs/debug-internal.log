@@ -1,0 +1,7 @@
+{"time":"2025-05-21T05:32:56.222913538-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250521_053256-1lftpaem/logs/debug-core.log"}
+{"time":"2025-05-21T05:32:57.203079478-04:00","level":"INFO","msg":"created new stream","id":"1lftpaem"}
+{"time":"2025-05-21T05:32:57.203099829-04:00","level":"INFO","msg":"stream: started","id":"1lftpaem"}
+{"time":"2025-05-21T05:32:57.20311452-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"1lftpaem"}
+{"time":"2025-05-21T05:32:57.203135151-04:00","level":"INFO","msg":"sender: started","stream_id":"1lftpaem"}
+{"time":"2025-05-21T05:32:57.20311559-04:00","level":"INFO","msg":"handler: started","stream_id":"1lftpaem"}
+{"time":"2025-05-21T05:32:57.707836588-04:00","level":"INFO","msg":"Starting system monitor"}

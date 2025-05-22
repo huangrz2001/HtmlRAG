@@ -140,9 +140,165 @@ def process_html(html: str) -> str:
                 wrapper.append(node)
             soup.append(wrapper)
 
+    def wrap_table_domains(soup):
+        """对所有 table 标签外包一层 <div class='table_domain'>"""
+        for table in soup.find_all("table"):
+            if not table.find_parent("div", class_="table_domain"):
+                wrapper = soup.new_tag("div", **{'class': 'table_domain'})
+                table.insert_before(wrapper)
+                wrapper.append(table.extract())
+
     convert_headings(soup)
     wrap_heading_domains(soup)
+    wrap_table_domains(soup)  # <-- 新增对表格的处理
     return str(soup)
+
+
+# ===================== HTML 清洗辅助函数 =====================
+import copy
+def _expand_table_spans(html: str) -> str:
+    """
+    展开 HTML 中的表格合并单元格（colspan 和 rowspan），生成标准矩阵表格
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        grid = []  # 二维网格：grid[row][col] = cell
+        max_cols = 0
+
+        for row_idx, row in enumerate(rows):
+            if len(grid) <= row_idx:
+                grid.append([])
+
+            col_idx = 0
+            for cell in row.find_all(["td", "th"]):
+                # 找下一个可用的列（跳过已有数据）
+                while col_idx < len(grid[row_idx]) and grid[row_idx][col_idx] is not None:
+                    col_idx += 1
+
+                rowspan = int(cell.get("rowspan", 1))
+                colspan = int(cell.get("colspan", 1))
+
+                # 清除 rowspan 和 colspan 属性（要展开了）
+                cell.attrs.pop("rowspan", None)
+                cell.attrs.pop("colspan", None)
+
+                for r in range(rowspan):
+                    while row_idx + r >= len(grid):
+                        grid.append([])
+
+                    while len(grid[row_idx + r]) < col_idx + colspan:
+                        grid[row_idx + r].append(None)
+
+                    for c in range(colspan):
+                        if r == 0 and c == 0:
+                            grid[row_idx + r][col_idx + c] = cell
+                        else:
+                            # 复制 cell 并填入
+                            new_cell = copy.copy(cell)
+                            grid[row_idx + r][col_idx + c] = new_cell
+
+                col_idx += colspan
+                max_cols = max(max_cols, col_idx)
+
+        # 构建新的 <table>
+        new_table = soup.new_tag("table")
+        for row_cells in grid:
+            tr = soup.new_tag("tr")
+            for cell in row_cells[:max_cols]:
+                if cell is not None:
+                    tr.append(cell)
+                else:
+                    empty = soup.new_tag("td")
+                    empty.string = ""
+                    tr.append(empty)
+            new_table.append(tr)
+
+        table.replace_with(new_table)
+
+    return str(soup)
+
+from bs4 import BeautifulSoup
+import copy
+
+import copy
+from bs4 import BeautifulSoup
+import copy
+from bs4 import BeautifulSoup
+
+def expand_table_spans(html: str) -> str:
+    """
+    展开 HTML 中的表格合并单元格（colspan 和 rowspan），生成标准矩阵表格。
+    忽略 rowspan=0 / colspan=0 占位单元格，避免错位。
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        grid = []  # 二维网格 grid[row][col] = cell
+        max_cols = 0
+
+        for row_idx, row in enumerate(rows):
+            if len(grid) <= row_idx:
+                grid.append([])
+
+            col_idx = 0
+            for cell in row.find_all(["td", "th"]):
+                # 获取并跳过无效 rowspan/colspan
+                try:
+                    rowspan = int(cell.get("rowspan", 1))
+                except:
+                    rowspan = 1
+                try:
+                    colspan = int(cell.get("colspan", 1))
+                except:
+                    colspan = 1
+
+                if rowspan == 0 or colspan == 0:
+                    continue  # 忽略占位空格
+
+                # 找下一个空白列
+                while col_idx < len(grid[row_idx]) and grid[row_idx][col_idx] is not None:
+                    col_idx += 1
+
+                # 清除合并属性
+                cell.attrs.pop("rowspan", None)
+                cell.attrs.pop("colspan", None)
+
+                for r in range(rowspan):
+                    while row_idx + r >= len(grid):
+                        grid.append([])
+
+                    while len(grid[row_idx + r]) < col_idx + colspan:
+                        grid[row_idx + r].append(None)
+
+                    for c in range(colspan):
+                        if r == 0 and c == 0:
+                            grid[row_idx + r][col_idx + c] = cell
+                        else:
+                            grid[row_idx + r][col_idx + c] = copy.copy(cell)
+
+                col_idx += colspan
+                max_cols = max(max_cols, col_idx)
+
+        # 构建新的表格
+        new_table = soup.new_tag("table")
+        for row_cells in grid:
+            tr = soup.new_tag("tr")
+            for cell in row_cells[:max_cols]:
+                if cell is not None:
+                    tr.append(cell)
+                else:
+                    empty = soup.new_tag("td")
+                    empty.string = ""
+                    tr.append(empty)
+            new_table.append(tr)
+
+        table.replace_with(new_table)
+
+    return str(soup)
+
 
 
 def clean_xml(html: str) -> str:
