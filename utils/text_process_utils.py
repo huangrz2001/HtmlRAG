@@ -6,7 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import json
 from datetime import datetime
 import torch
-import jieba.analyse
+from difflib import SequenceMatcher
 
 # 关闭并行化警告，避免控制台冗余信息
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -214,9 +214,6 @@ def build_optimal_jieba_query(
 
 
 # ======================== 检索结果去重函数（适用于 Milvus/ES） ========================
-from datetime import datetime
-from difflib import SequenceMatcher
-
 def parse_time(t: str) -> datetime:
     try:
         return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
