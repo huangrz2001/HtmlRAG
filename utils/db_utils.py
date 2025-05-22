@@ -25,7 +25,7 @@ from pymilvus import (
     Collection,
 )
 import torch
-from utils.text_process_utils import extract_title_from_block, deduplicate_ranked_blocks, clean_invisible, generate_summary_ChatGLM, build_optimal_jieba_query
+from utils.text_process_utils import extract_title_from_block, deduplicate_ranked_blocks, clean_invisible, generate_summary_ChatGLM, build_optimal_jieba_query, deduplicate_milvus_and_es
 from time import sleep
 from langchain_community.vectorstores import Milvus
 from langchain.schema import Document
@@ -349,8 +349,8 @@ def query_milvus_blocks(
             })
 
     print(f"🔎 Milvus 初始返回数量: {len(milvus_rank)}")
-    milvus_rank = deduplicate_ranked_blocks(milvus_rank)
-    print(f"✅ 去重后保留数量: {len(milvus_rank)}")
+    # milvus_rank = deduplicate_ranked_blocks(milvus_rank)
+    # print(f"✅ 去重后保留数量: {len(milvus_rank)}")
 
     # if reranker is not None:
     #     milvus_rank = rerank_results(milvus_rank, question, reranker, rerank_top_k)
@@ -394,9 +394,54 @@ def query_es_blocks(
             "text": hit["_source"].get("text", ""),
         } for hit in es_response["hits"]["hits"]
     ]
-
-
+    print(f"🔎 ES 初始返回数量: {len(es_rank)}")
+    # milvus_rank = deduplicate_ranked_blocks(es_rank)
+    # print(f"✅ 去重后保留数量: {len(es_rank)}")
     return es_rank
+
+
+
+# ======================== 多源查询函数 ========================
+def query_blocks(
+    question,
+    embedder,
+    host="localhost",
+    milvus_collection_name="jvliangqianchuan",
+    es_index_name="jvliangqianchuan",
+    top_k=10,
+    reranker=None,
+    rerank_top_k=5
+):
+    # 1. 查询 Milvus
+    milvus_raw = query_milvus_blocks(
+        host=host,
+        question=question,
+        embedder=embedder,
+        reranker=None,
+        milvus_collection_name=milvus_collection_name,
+        top_k=top_k,
+        rerank_top_k=rerank_top_k
+    )
+
+    # 2. 查询 ES
+    es_raw = query_es_blocks(
+        host=host,
+        question=question,
+        es_index_name=es_index_name,
+        top_k=top_k
+    )
+
+    print(f"📥 合并前: Milvus={len(milvus_raw)}, ES={len(es_raw)}")
+
+    # 3. 时间优先去重：先内部再交叉（Milvus against ES）
+    final_blocks = deduplicate_milvus_and_es(milvus_raw, es_raw)
+
+    # 4. 可选重排序
+    if reranker is not None:
+        final_blocks = rerank_results(final_blocks, question, reranker, top_k=rerank_top_k)
+
+    print(f"✅ 最终返回文档块数: {len(final_blocks)}")
+    return final_blocks
 
 
 # ======================== Reranker 函数 ========================

@@ -7,7 +7,7 @@ from transformers import AutoTokenizer, AutoModel
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 
-from utils.db_utils import query_milvus_blocks, query_milvus_blocks, Reranker
+from utils.db_utils import query_milvus_blocks, query_milvus_blocks, Reranker, query_blocks
 # 关闭 tokenizers 并行化警告
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     parser.add_argument("--html_dir", type=str, default="./测试知识库_cleaned")
     parser.add_argument("--question", type=str, default="如何运营巨量千川平台")
     parser.add_argument("--lang", type=str, default="zh")
-    parser.add_argument("--index_name", type=str, default="curd_env")
+    parser.add_argument("--index_name", type=str, default="test_env")
     parser.add_argument("--embed_model", type=str, default="/data/huangruizhi/htmlRAG/bce-embedding-base_v1")
     parser.add_argument("--rerank_model", type=str, default="maidalun1020/bce-reranker-base_v1")
     parser.add_argument("--top_k", type=int, default=5)
@@ -57,12 +57,13 @@ if __name__ == "__main__":
         #     include_content=True,
         # )
 
-        query_milvus_blocks(
-            "192.168.7.247",
+        query_blocks(
             question,
             embedder,
-            reranker=reranker,
+            host="192.168.7.247",
             milvus_collection_name=args.index_name,
-            top_k=100,
-            rerank_top_k=20
+            es_index_name=args.index_name,
+            top_k=50,
+            reranker=None,
+            rerank_top_k=5
         )

@@ -217,11 +217,19 @@ def build_optimal_jieba_query(
 from datetime import datetime
 from difflib import SequenceMatcher
 
-from datetime import datetime
-from difflib import SequenceMatcher
+def parse_time(t: str) -> datetime:
+    try:
+        return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return datetime.min
 
-from datetime import datetime
-from difflib import SequenceMatcher
+def str_sim(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+def clean_text(text: str) -> str:
+    """移除文本中的特殊字符，仅保留中英文与数字"""
+    return "".join(re.findall(r"[\u4e00-\u9fa5a-zA-Z0-9]+", text))
+
 
 def deduplicate_ranked_blocks(docs: list,
                               threshold_content=0.9,
@@ -232,15 +240,6 @@ def deduplicate_ranked_blocks(docs: list,
     - 若后续 window 个块中存在重复，则用时间更新最新项，继续滑动比较
     - 直到无重复，保留该块并继续下一个
     """
-    def parse_time(t: str) -> datetime:
-        try:
-            return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return datetime.min
-
-    def str_sim(a: str, b: str) -> float:
-        return SequenceMatcher(None, a, b).ratio()
-
     seen = set()
     keep = []
     i = 0
@@ -291,6 +290,51 @@ def deduplicate_ranked_blocks(docs: list,
 
     print(f"\n✅ 去重完成，原始 {len(docs)} 个块，保留 {len(keep)} 个块\n")
     return keep
+
+def deduplicate_milvus_and_es(milvus_docs: list,
+                               es_docs: list,
+                               threshold_content=0.9,
+                               threshold_page_name=0.6,
+                               window: int = 3):
+    # Step 1: 各自内部去重
+    
+    milvus_deduped = deduplicate_ranked_blocks(milvus_docs, threshold_content, threshold_page_name, window)
+    es_deduped = deduplicate_ranked_blocks(es_docs, threshold_content, threshold_page_name, window)
+
+    # Step 2: 用 ES 去重 Milvus（根据时间保留最新）
+    final_milvus = []
+    final_es = list(es_deduped)  # 可修改列表
+
+    for m in milvus_deduped:
+        m_text = clean_text(m.get("text", ""))
+        m_name = clean_text(m.get("page_name", ""))
+        m_time = parse_time(m.get("time", ""))
+
+        keep_milvus = True
+        for e in es_deduped:
+            e_text = clean_text(e.get("text", ""))
+            e_name = clean_text(e.get("page_name", ""))
+            e_time = parse_time(e.get("time", ""))
+
+            if str_sim(m_text, e_text) >= threshold_content and str_sim(m_name, e_name) >= threshold_page_name:
+                if m_time > e_time:
+                    # Milvus 更新 → 保留 Milvus，剔除 ES 中对应项
+                    final_es.remove(e)
+                else:
+                    # ES 更新 → 舍弃 Milvus 块
+                    keep_milvus = False
+                break  # 每个块只比对一次
+
+        if keep_milvus:
+            final_milvus.append(m)
+
+    # print(f"✅ Milvus: 原始 {len(milvus_docs)} → 内部去重后 {len(milvus_deduped)} → 最终保留 {len(final_milvus)}")
+    # print(f"✅ ES: 原始 {len(es_docs)} → 内部去重后 {len(es_deduped)} → 最终保留 {len(final_es)}")
+
+    return final_milvus + final_es
+
+
+
 
 
 # ======================== 文档块分类函数 ========================
