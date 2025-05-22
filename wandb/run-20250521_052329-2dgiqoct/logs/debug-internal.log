@@ -1,7 +1,0 @@
-{"time":"2025-05-21T05:23:29.890426354-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250521_052329-2dgiqoct/logs/debug-core.log"}
-{"time":"2025-05-21T05:23:30.945910713-04:00","level":"INFO","msg":"created new stream","id":"2dgiqoct"}
-{"time":"2025-05-21T05:23:30.945933353-04:00","level":"INFO","msg":"stream: started","id":"2dgiqoct"}
-{"time":"2025-05-21T05:23:30.945947933-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"2dgiqoct"}
-{"time":"2025-05-21T05:23:30.945950483-04:00","level":"INFO","msg":"handler: started","stream_id":"2dgiqoct"}
-{"time":"2025-05-21T05:23:30.945952993-04:00","level":"INFO","msg":"sender: started","stream_id":"2dgiqoct"}
-{"time":"2025-05-21T05:23:31.403830193-04:00","level":"INFO","msg":"Starting system monitor"}

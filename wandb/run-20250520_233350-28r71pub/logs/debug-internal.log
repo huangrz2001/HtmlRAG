@@ -1,7 +1,0 @@
-{"time":"2025-05-20T23:33:50.9209734-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250520_233350-28r71pub/logs/debug-core.log"}
-{"time":"2025-05-20T23:33:51.938421359-04:00","level":"INFO","msg":"created new stream","id":"28r71pub"}
-{"time":"2025-05-20T23:33:51.93844595-04:00","level":"INFO","msg":"stream: started","id":"28r71pub"}
-{"time":"2025-05-20T23:33:51.93846033-04:00","level":"INFO","msg":"sender: started","stream_id":"28r71pub"}
-{"time":"2025-05-20T23:33:51.93846065-04:00","level":"INFO","msg":"handler: started","stream_id":"28r71pub"}
-{"time":"2025-05-20T23:33:51.93846318-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"28r71pub"}
-{"time":"2025-05-20T23:33:52.483831403-04:00","level":"INFO","msg":"Starting system monitor"}

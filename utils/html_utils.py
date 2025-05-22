@@ -14,6 +14,7 @@ import bs4
 from typing import List, Tuple, Dict
 from collections import defaultdict
 from bs4 import BeautifulSoup, Comment, Tag
+import copy
 
 
 # ===================== HTML 清洗核心 =====================
@@ -83,8 +84,8 @@ def simplify_html_keep_table(soup, keep_attr=False):
     # 清除空行
     return "\n".join(line for line in str(soup).split("\n") if line.strip())
 
-
-def process_html(html: str) -> str:
+def warp_domains(html: str) -> str:
+    """将 HTML 中的 <hX> 标签和 <table> 标签进行包装"""
     """将具有 data-block-type 属性的标签转换为标准 <hX> 标签，并根据标题结构包装内容"""
     soup = BeautifulSoup(html, 'html.parser')
 
@@ -153,79 +154,6 @@ def process_html(html: str) -> str:
     wrap_table_domains(soup)  # <-- 新增对表格的处理
     return str(soup)
 
-
-# ===================== HTML 清洗辅助函数 =====================
-import copy
-def _expand_table_spans(html: str) -> str:
-    """
-    展开 HTML 中的表格合并单元格（colspan 和 rowspan），生成标准矩阵表格
-    """
-    soup = BeautifulSoup(html, "html.parser")
-
-    for table in soup.find_all("table"):
-        rows = table.find_all("tr")
-        grid = []  # 二维网格：grid[row][col] = cell
-        max_cols = 0
-
-        for row_idx, row in enumerate(rows):
-            if len(grid) <= row_idx:
-                grid.append([])
-
-            col_idx = 0
-            for cell in row.find_all(["td", "th"]):
-                # 找下一个可用的列（跳过已有数据）
-                while col_idx < len(grid[row_idx]) and grid[row_idx][col_idx] is not None:
-                    col_idx += 1
-
-                rowspan = int(cell.get("rowspan", 1))
-                colspan = int(cell.get("colspan", 1))
-
-                # 清除 rowspan 和 colspan 属性（要展开了）
-                cell.attrs.pop("rowspan", None)
-                cell.attrs.pop("colspan", None)
-
-                for r in range(rowspan):
-                    while row_idx + r >= len(grid):
-                        grid.append([])
-
-                    while len(grid[row_idx + r]) < col_idx + colspan:
-                        grid[row_idx + r].append(None)
-
-                    for c in range(colspan):
-                        if r == 0 and c == 0:
-                            grid[row_idx + r][col_idx + c] = cell
-                        else:
-                            # 复制 cell 并填入
-                            new_cell = copy.copy(cell)
-                            grid[row_idx + r][col_idx + c] = new_cell
-
-                col_idx += colspan
-                max_cols = max(max_cols, col_idx)
-
-        # 构建新的 <table>
-        new_table = soup.new_tag("table")
-        for row_cells in grid:
-            tr = soup.new_tag("tr")
-            for cell in row_cells[:max_cols]:
-                if cell is not None:
-                    tr.append(cell)
-                else:
-                    empty = soup.new_tag("td")
-                    empty.string = ""
-                    tr.append(empty)
-            new_table.append(tr)
-
-        table.replace_with(new_table)
-
-    return str(soup)
-
-from bs4 import BeautifulSoup
-import copy
-
-import copy
-from bs4 import BeautifulSoup
-import copy
-from bs4 import BeautifulSoup
 
 def expand_table_spans(html: str) -> str:
     """
@@ -300,7 +228,6 @@ def expand_table_spans(html: str) -> str:
     return str(soup)
 
 
-
 def clean_xml(html: str) -> str:
     """移除 XML/Doctype 声明"""
     html = re.sub(r"<\?xml.*?>", "", html)
@@ -308,13 +235,66 @@ def clean_xml(html: str) -> str:
     return html
 
 
+def clean_html_text(html_content):
+    """去除 markdown 风格的 ```html``` 块"""
+    html_content = re.sub(r'\n*```html\n*', '', html_content)
+    html_content = re.sub(r'\n*```\n*', '', html_content)
+
+    """移除标签之间的换行符（如 >\n -> >）"""
+    html_content = re.sub(r'>\n+', '>', html_content)
+    html_content = re.sub(r'[^\s]<', lambda m: m.group(0).replace('\n', ''), html_content)
+    
+    """移除标签边缘的多余空格"""
+    html_content = re.sub(r'>\s+', '>', html_content)
+    html_content = re.sub(r'\s+<', '<', html_content)
+    return html_content
+
+
 def clean_html(html: str, keep_att=False) -> str:
     """主入口函数：清洗 HTML，保留结构并统一化"""
     soup = BeautifulSoup(html, 'html.parser')
     html = simplify_html_keep_table(soup, keep_att)
-    html = process_html(html)
+    html = warp_domains(html)
     html = clean_xml(html)
+    html = clean_html_text(html)
     return html
+
+
+
+def process_html_file(source_path, target_path):
+    """
+    对单个 HTML 文件进行清洗，保留 <time> 开头标签，写入目标路径。
+    """
+    with open(source_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+
+    # 提取起始 <time> 标签（格式固定）
+    time_pattern = r"^\s*<time[^>]*?>.*?</time>"
+    time_match = re.match(time_pattern, html, flags=re.IGNORECASE | re.DOTALL)
+
+    time_tag = ""
+    remaining_html = html
+
+    if time_match:
+        time_tag = time_match.group(0).strip()
+        remaining_html = html[time_match.end():].lstrip()
+
+    # 对剩余内容进行清洗
+    simplified_html = clean_html(remaining_html, keep_att=False)
+    simplified_html = expand_table_spans(simplified_html)
+
+
+    # 将 <time> 标签补回开头
+    final_html = time_tag + simplified_html
+
+    # 写入目标路径
+    with open(target_path, 'w', encoding='utf-8') as f:
+        f.write(final_html)
+
+    print(f"✅ 已处理 {source_path} → {target_path}")
+    print(f"原始长度: {len(html)}, 清理后长度: {len(final_html)}")
+    return final_html
+
 
 
 # ===================== HTML 分块函数 =====================

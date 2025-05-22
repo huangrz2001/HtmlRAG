@@ -417,8 +417,9 @@ def generate_question_ChatGLM(
 
 
 # ======================== 文档块生成函数 ========================
-def generate_block_documents(
+def _generate_block_documents(
     block_tree,
+    max_node_words,
     page_url="unknown.html",
     summary_model=None,
     summary_tokenizer=None,
@@ -468,6 +469,140 @@ def generate_block_documents(
             "text": text,
             "time": time_value,
         })
+
+    print(f"\n✅ 所有块处理完毕，共生成 {len(doc_meta)} 条有效文档块")
+    return doc_meta
+
+
+def generate_block_documents(
+    block_tree,
+    max_node_words,
+    page_url="unknown.html",
+    summary_model=None,
+    summary_tokenizer=None,
+    time_value=""
+):
+    """
+    生成结构化文档块，支持表格自动切分，统一生成 summary 和 question。
+    """
+    from utils.text_process_utils import extract_title_from_block, clean_invisible
+    import os
+
+    path_tags = [b[0] for b in block_tree]
+    doc_meta = []
+    chunk_idx = 0
+
+    print(f"📦 共提取块数：{len(path_tags)}")
+
+    for pidx, tag in enumerate(path_tags):
+        print(f"\n🧩 正在处理第 {pidx+1}/{len(path_tags)} 个 block")
+
+        page_name = os.path.splitext(os.path.basename(page_url))[0]
+        title = extract_title_from_block(tag)
+        print(f"🏷️ 提取标题：{title[:128]}")
+
+        is_table_block = (tag.name == "table") or tag.find("table") is not None
+
+        if is_table_block:
+            print("📊 表格类型，执行按行拼接切分")
+            table = tag.find("table") if tag.name != "table" else tag
+            rows = table.find_all("tr")
+            print(f"📊 表格行数：{len(rows)}")
+            if not rows:
+                continue
+
+            def row_to_text(row):
+                return " ".join(cell.strip() for cell in row.stripped_strings) + "\n"
+
+            header_text = row_to_text(rows[0])
+            current_text = header_text
+            current_words = len(re.findall(r"[\u4e00-\u9fa5a-zA-Z0-9]", header_text))
+            start_row = 1  # header 是第1行
+            row_range_start = 1
+
+            for idx, row in enumerate(rows[1:], start=2):
+                row_text = row_to_text(row)
+                row_words = len(re.findall(r"[\u4e00-\u9fa5a-zA-Z0-9]", row_text))
+
+                if current_words + row_words > max_node_words:
+                    # ✅ 提交当前块
+                    text = clean_invisible(current_text.strip())
+                    if text:
+                        summary, question = "", ""
+                        if summary_model and summary_tokenizer:
+                            summary = generate_summary_ChatGLM(text, page_url, summary_model, summary_tokenizer)
+                            question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
+
+                        title_with_range = f"{title[:96]} 表格行{row_range_start}-{idx-1}"
+                        doc_meta.append({
+                            "chunk_idx": chunk_idx,
+                            "page_name": page_name,
+                            "title": title_with_range,
+                            "page_url": page_url,
+                            "summary": summary,
+                            "question": question,
+                            "text": text,
+                            "time": time_value,
+                        })
+                        chunk_idx += 1
+
+                    # ✅ 重置
+                    current_text = header_text + row_text
+                    current_words = len(re.findall(r"[\u4e00-\u9fa5a-zA-Z0-9]", current_text))
+                    row_range_start = idx
+                else:
+                    current_text += row_text
+                    current_words += row_words
+
+            # ✅ 提交最后一个块
+            text = clean_invisible(current_text.strip())
+            if text:
+                summary, question = "", ""
+                if summary_model and summary_tokenizer:
+                    summary = generate_summary_ChatGLM(text, page_url, summary_model, summary_tokenizer)
+                    question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
+
+                title_with_range = f"{title[:96]} 表格行{row_range_start}-{len(rows)}"
+                doc_meta.append({
+                    "chunk_idx": chunk_idx,
+                    "page_name": page_name,
+                    "title": title_with_range,
+                    "page_url": page_url,
+                    "summary": summary,
+                    "question": question,
+                    "text": text,
+                    "time": time_value,
+                })
+                chunk_idx += 1
+
+        else:
+            # text = tag.get_text().strip().replace("\x00", "")
+            text = tag.get_text().replace("\x00", "")  # 不 strip()，保留换行
+
+            text = clean_invisible(text)
+            if not text:
+                print("⚠️ 空内容，跳过")
+                continue
+
+            preview = text[:80].replace('\n', ' ') + ("..." if len(text) > 80 else "")
+            print(f"📄 文本预览：{preview}")
+
+            summary, question = "", ""
+            if summary_model and summary_tokenizer:
+                summary = generate_summary_ChatGLM(text, page_url, summary_model, summary_tokenizer)
+                question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
+
+            doc_meta.append({
+                "chunk_idx": chunk_idx,
+                "page_name": page_name,
+                "title": title[:128],
+                "page_url": page_url,
+                "summary": summary,
+                "question": question,
+                "text": text,
+                "time": time_value,
+            })
+            chunk_idx += 1
 
     print(f"\n✅ 所有块处理完毕，共生成 {len(doc_meta)} 条有效文档块")
     return doc_meta

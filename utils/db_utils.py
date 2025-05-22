@@ -27,7 +27,10 @@ from pymilvus import (
 import torch
 from utils.text_process_utils import extract_title_from_block, deduplicate_ranked_blocks, clean_invisible, generate_summary_ChatGLM, build_optimal_jieba_query
 from time import sleep
-
+from langchain_community.vectorstores import Milvus
+from langchain.schema import Document
+from time import sleep
+from elasticsearch import Elasticsearch, helpers
 
 # 加载自定义词典（适用于电商/运营场景）
 jieba.load_userdict("./user_dict.txt")
@@ -41,18 +44,22 @@ def get_max_global_idx_milvus(host, collection_name):
         collection.load()
         results = collection.query(
             expr="global_chunk_idx >= 0",
-            output_fields=["global_chunk_idx"]
+            output_fields=["global_chunk_idx"],
         )
-        max_id = max([r["global_chunk_idx"] for r in results], default=0)
-        return max_id + 1
-    except Exception:
-        return 0  # 如果 collection 不存在或查询失败
+        if not results:
+            return 0
+        # 提取所有 idx，取最大值
+        max_idx = max(item["global_chunk_idx"] for item in results)
+        return max_idx + 1
+    except Exception as e:
+        print(f"⚠️ 查询失败: {e}")
+        return 0
 
-
+    
 # ======================== 获取最大全局索引（ES） ========================
 def get_max_global_idx_es(host, index_name):
     try:
-        es = Elasticsearch(f"http://{host}:9200")
+        es = Elasticsearch([{"host": host, "port": 9200, "scheme": "http"}])
         if not es.indices.exists(index=index_name):
             return 0
         res = es.search(
@@ -68,8 +75,6 @@ def get_max_global_idx_es(host, index_name):
     except Exception:
         return 0
 
-
-
 # ======================== ES 索引重建 ========================
 def reset_es(host="192.168.7.247", index_name="test_env"):
     """重建 Elasticsearch 索引，含中文分词配置"""
@@ -78,7 +83,7 @@ def reset_es(host="192.168.7.247", index_name="test_env"):
 
     if es.indices.exists(index=index_name):
         print(f"⚠️ 索引 {index_name} 已存在，删除中...")
-        es.indices.delete(index="test_env", ignore_unavailable=True, request_timeout=20)
+        es.indices.delete(index=index_name, ignore_unavailable=True, request_timeout=20)
 
     es.indices.create(
         index=index_name,
@@ -102,7 +107,10 @@ def reset_es(host="192.168.7.247", index_name="test_env"):
                         "analyzer": "ik_max_word",
                         "fields": { "keyword": { "type": "keyword" } }
                     },
-                    "page_url": { "type": "keyword" },
+                    "page_url": {
+                        "type": "text",
+                        "fields": { "keyword": { "type": "keyword" } }
+                    },
                     "page_name": {
                         "type": "text",
                         "analyzer": "ik_max_word",
@@ -142,7 +150,7 @@ def reset_milvus(host="localhost", collection_name="test_env", dim=768):
         FieldSchema(name="global_chunk_idx", dtype=DataType.INT64, is_primary=True, auto_id=False),
         FieldSchema(name="chunk_idx", dtype=DataType.INT64),
         FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dim),
-        FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
+        FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=20000),
         FieldSchema(name="page_url", dtype=DataType.VARCHAR, max_length=1024),
         FieldSchema(name="page_name", dtype=DataType.VARCHAR, max_length=512),
         FieldSchema(name="title", dtype=DataType.VARCHAR, max_length=512),
@@ -157,111 +165,7 @@ def reset_milvus(host="localhost", collection_name="test_env", dim=768):
     print(f"✅ Milvus collection '{collection_name}' 已创建")
 
 
-# ======================== 文档块插入函数，同时插入Milvus和ES，对应clean步骤的文件 ========================
-def insert_block_documents(
-    block_tree,
-    embedder,
-    collection_name="jvliangqianchuan",
-    page_url="unknown.html",
-    insert_num=0,
-    summary_model=None,
-    summary_tokenizer=None,
-    time_value = ""
-):
-    """将 HTML block 文档插入 Milvus 与 Elasticsearch"""
-    es = Elasticsearch("http://localhost:9200")
-    path_tags = [b[0] for b in block_tree]
-    paths = [b[1] for b in block_tree]
-    doc_meta = []
-
-    for pidx, tag in enumerate(path_tags):
-        text = tag.get_text().strip().replace("\x00", "")
-        text = clean_invisible(text)
-        if not text:
-            continue
-
-        title = extract_title_from_block(tag)
-        page_name = os.path.splitext(os.path.basename(page_url))[0]
-        summary = ""
-
-        if summary_model and summary_tokenizer:
-            summary = generate_summary_ChatGLM(text, summary_model, summary_tokenizer)
-
-        print("\n" + "=" * 80)
-        print("📄 原文内容：")
-        print(text[:500] + ("..." if len(text) > 500 else ""))
-        print("-" * 80)
-        print("📝 生成摘要：")
-        print(summary)
-        print("=" * 80 + "\n")
-
-        doc_meta.append({
-            "chunk_idx": pidx + insert_num,
-            "page_name": page_name,
-            "title": title[:64],
-            "page_url": page_url,
-            "summary": summary,
-            "text": text,
-            "time": time_value,
-        })
-
-    # Elasticsearch 插入
-    actions = [
-        {
-            "_index": collection_name,
-            "_id": f"{doc['page_url']}#{doc['chunk_idx']}",
-            "_source": {
-                "chunk_idx": doc["chunk_idx"],
-                "title": doc["title"],
-                "summary": doc.get("summary", ""),
-                "text": doc["text"],
-                "page_url": doc["page_url"],
-                "page_name": doc["page_name"],
-                "time": doc.get("time", ""),
-            }
-        } for doc in doc_meta
-    ]
-    bulk(es, actions)
-    print(f"✅ 已插入 ES：{len(doc_meta)} 条文档块")
-
-    # Milvus 插入
-    connections.connect(alias="default", host="localhost", port="19530")
-    print(f"🧠 正在插入向量到 Milvus collection: {collection_name} ...")
-
-    node_docs = [Document(page_content=doc["text"], metadata=doc) for doc in doc_meta]
-    Milvus.from_documents(
-        node_docs,
-        embedder,
-        collection_name=collection_name,
-        connection_args={
-            "host": "localhost",
-            "port": "19530",
-            "field_map": {
-                "chunk_idx": "chunk_idx",
-                "title": "title",
-                "text": "text",
-                "page_name": "page_name",
-                "page_url": "page_url",
-                "summary": "summary",
-                "time": "time",
-            },
-        },
-        index_params={
-            "metric_type": "COSINE",
-            "index_type": "IVF_FLAT",
-            "params": {"nlist": 64},
-        },
-    )
-    print(f"✅ 已插入 Milvus：{len(doc_meta)} 条向量")
-    return len(doc_meta)
-
-
-
 # ======================== 插入 Milvus ========================
-from langchain_community.vectorstores import Milvus
-from langchain.schema import Document
-from time import sleep
-
 def insert_block_to_milvus(doc_meta_list, embedder, host, collection_name, cnt, batch_size=100):
     from pymilvus import connections
     connections.connect(alias="default", host=host, port="19530")
@@ -315,7 +219,6 @@ def insert_block_to_milvus(doc_meta_list, embedder, host, collection_name, cnt, 
     return cnt + len(doc_meta_list)
 
 
-
 # ======================== 插入 ES ========================
 def insert_block_to_es(doc_meta_list, host, es_index_name, cnt):
     es = Elasticsearch(f"http://{host}:9200")
@@ -346,6 +249,49 @@ def insert_block_to_es(doc_meta_list, host, es_index_name, cnt):
     bulk(es, actions)
     print(f"✅ 已插入 ES：{len(doc_meta_list)} 条文档块")
     return cnt + len(doc_meta_list)
+
+
+# ======================== 删除 Milvus 中的文档块 ========================
+def delete_blocks_from_milvus(host, collection_name, page_url):
+    try:
+        connections.connect(alias="default", host=host, port="19530")
+        collection = Collection(name=collection_name)
+        collection.load()
+        expr = f'page_url == "{page_url}"'
+        collection.delete(expr)
+        print(f"🗑️ Milvus: 已删除所有 page_url = '{page_url}' 的文档块")
+    except Exception as e:
+        print(f"❌ Milvus 删除失败: {e}")
+
+
+# ======================== 删除 ES 中的文档块 ========================
+def delete_blocks_from_es(host, index_name, page_url):
+    try:
+        es = Elasticsearch(f"http://{host}:9200")
+        query = {
+            "query": {
+                "term": {
+                    "page_url.keyword": page_url  # `.keyword` 保证精确匹配
+                }
+            }
+        }
+
+        resp = helpers.bulk(
+            client=es,
+            actions=(
+                {
+                    "_op_type": "delete",
+                    "_index": index_name,
+                    "_id": hit["_id"]
+                }
+                for hit in es.search(index=index_name, body=query, size=10000)["hits"]["hits"]
+            )
+        )
+
+        print(f"🗑️ ES: 已删除所有 page_url = '{page_url}' 的文档块，共 {resp[0]} 条")
+    except Exception as e:
+        print(f"❌ ES 删除失败: {e}")
+
 
 
 # ======================== Milvus 查询函数 ========================
@@ -420,7 +366,6 @@ def query_milvus_blocks(
 
 
 # ======================== ES 查询函数 ========================
-
 def query_es_blocks(
     host,
     question,
@@ -454,11 +399,6 @@ def query_es_blocks(
     return es_rank
 
 
-
-
-
-
-
 # ======================== Reranker 函数 ========================
 class Reranker:
     def __init__(self, model, tokenizer, device):
@@ -474,7 +414,6 @@ class Reranker:
         with torch.no_grad():
             scores = self.model(**inputs).logits.squeeze(-1)
         return scores.cpu().tolist()
-
 
 def rerank_results(docs, query, reranker, top_k):
     """
@@ -498,3 +437,6 @@ def rerank_results(docs, query, reranker, top_k):
 
     print(f"✅ 精排完成，选取前 {top_k} 条")
     return reranked_docs
+
+
+

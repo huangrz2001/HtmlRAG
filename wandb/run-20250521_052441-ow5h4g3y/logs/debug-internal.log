@@ -1,7 +1,0 @@
-{"time":"2025-05-21T05:24:41.955053705-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"/home/algo/hrz/db_construct/wandb/run-20250521_052441-ow5h4g3y/logs/debug-core.log"}
-{"time":"2025-05-21T05:24:42.918372562-04:00","level":"INFO","msg":"created new stream","id":"ow5h4g3y"}
-{"time":"2025-05-21T05:24:42.918393203-04:00","level":"INFO","msg":"stream: started","id":"ow5h4g3y"}
-{"time":"2025-05-21T05:24:42.918409233-04:00","level":"INFO","msg":"sender: started","stream_id":"ow5h4g3y"}
-{"time":"2025-05-21T05:24:42.918411353-04:00","level":"INFO","msg":"handler: started","stream_id":"ow5h4g3y"}
-{"time":"2025-05-21T05:24:42.918448554-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"ow5h4g3y"}
-{"time":"2025-05-21T05:24:43.624525424-04:00","level":"INFO","msg":"Starting system monitor"}
