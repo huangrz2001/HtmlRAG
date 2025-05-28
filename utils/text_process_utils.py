@@ -7,6 +7,9 @@ import json
 from datetime import datetime
 import torch
 from difflib import SequenceMatcher
+from utils.llm_api import generate_summary_ChatGLM, generate_question_ChatGLM, generate_summary_vllm
+import numpy as np
+from collections import defaultdict
 
 # 关闭并行化警告，避免控制台冗余信息
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -50,91 +53,6 @@ def extract_title_from_block(tag) -> str:
         if t.strip():
             return t.strip()[:48]
     return ""
-
-
-# ======================== Elasticsearch 去重 ========================
-
-def is_duplicate_in_es(
-    es,
-    index_name,
-    text,
-    page_name,
-    threshold_content=0.9,
-    threshold_page_name=0.6,
-    top_k=5,
-) -> bool:
-    """
-    基于 ES 查询相似内容块，判断是否重复：
-    - 内容相似度 >= 阈值 且
-    - 页面名称相似度 >= 阈值
-    """
-    query = {"query": {"match": {"content": text}}}
-
-    try:
-        resp = es.search(index=index_name, body=query, size=top_k)
-    except Exception as e:
-        print(f"⚠️ Elasticsearch 查询失败: {e}")
-        return False
-
-    text_cleaned = clean_text(text)
-    page_name_cleaned = clean_text(page_name)
-
-    for hit in resp["hits"]["hits"]:
-        content_existing = hit["_source"].get("content", "")
-        page_name_existing = hit["_source"].get("page_name", "")
-
-        try:
-            vectorizer = TfidfVectorizer(tokenizer=jieba_cut_clean)
-            content_sim = cosine_similarity(
-                vectorizer.fit_transform([text_cleaned, clean_text(content_existing)])
-            )[0, 1]
-            title_sim = cosine_similarity(
-                vectorizer.fit_transform([page_name_cleaned, clean_text(page_name_existing)])
-            )[0, 1]
-        except Exception as e:
-            print(f"⚠️ 相似度计算失败: {e}")
-            continue
-
-        if content_sim >= threshold_content and title_sim >= threshold_page_name:
-            print(f"\n⛔️ 内容重复度 {content_sim:.3f}，标题重复度 {title_sim:.3f}，判为重复")
-            print("👉 当前文本：", text_cleaned[:300] + ("..." if len(text_cleaned) > 300 else ""))
-            print("👉 相似 ES 文本：", clean_text(content_existing)[:300] + ("..." if len(content_existing) > 300 else ""))
-            print("👉 当前标题：", page_name_cleaned)
-            print("👉 ES 中标题：", clean_text(page_name_existing))
-            print("=" * 80)
-            return True
-
-    return False
-
-
-# ======================== 文档内重复块过滤 ========================
-
-def filter_duplicate_blocks(texts: list, threshold=0.9) -> list:
-    """
-    基于 TF-IDF 向量与 cosine 相似度，过滤重复文本块
-    返回保留的索引列表
-    """
-    if len(texts) <= 1:
-        return list(range(len(texts)))
-
-    cleaned_texts = [clean_text(t) for t in texts]
-    vectorizer = TfidfVectorizer(tokenizer=jieba_cut_clean)
-    tfidf_matrix = vectorizer.fit_transform(cleaned_texts)
-    similarity_matrix = cosine_similarity(tfidf_matrix)
-
-    keep_indices = []
-    seen = set()
-    for i in range(len(cleaned_texts)):
-        if i in seen:
-            continue
-        keep_indices.append(i)
-        for j in range(i + 1, len(cleaned_texts)):
-            if similarity_matrix[i][j] >= threshold:
-                seen.add(j)
-
-    return keep_indices
-
-
 
 
 
@@ -228,306 +146,72 @@ def clean_text(text: str) -> str:
     return "".join(re.findall(r"[\u4e00-\u9fa5a-zA-Z0-9]+", text))
 
 
-def deduplicate_ranked_blocks(docs: list,
-                              threshold_content=0.9,
-                              threshold_page_name=0.6,
-                              window: int = 3) -> list:
-    """
-    多窗口滑动去重逻辑（带详细打印）：
-    - 若后续 window 个块中存在重复，则用时间更新最新项，继续滑动比较
-    - 直到无重复，保留该块并继续下一个
-    """
-    seen = set()
-    keep = []
-    i = 0
+def deduplicate_ranked_blocks_pal(docs, threshold_content=0.9, threshold_page_name=0.6):
+    n = len(docs)
+    if n <= 1:
+        return docs
 
-    while i < len(docs):
-        if i in seen:
-            i += 1
-            continue
+    texts = [clean_text(doc.get("text", "")) for doc in docs]
+    names = [clean_text(doc.get("page_name", "")) for doc in docs]
+    times = np.array([parse_time(doc.get("time", "")) for doc in docs])
 
-        base = docs[i]
-        base_text = clean_text(base.get("text", ""))
-        base_name = clean_text(base.get("page_name", ""))
-        base_time = parse_time(base.get("time", ""))
-        best_doc = base
-        best_time = base_time
+    tfidf = TfidfVectorizer().fit(texts + names)
+    text_vecs = tfidf.transform(texts)
+    name_vecs = tfidf.transform(names)
 
-        # print(f"\n🟩 当前基准块 i={i}：")
-        # print(f"🔹标题: {base.get('page_name', '')}")
-        # print(f"🔹时间: {base.get('time', '')}")
-        # print(f"🔹内容前50字: {base.get('text', '')[:50]}")
+    sim_text = cosine_similarity(text_vecs)
+    sim_name = cosine_similarity(name_vecs)
 
-        for j in range(i + 1, min(i + 1 + window, len(docs))):
-            if j in seen:
-                continue
+    # 上三角重复对
+    triu_idx = np.triu_indices(n, k=1)
+    sim_mask = (sim_text[triu_idx] >= threshold_content) & (sim_name[triu_idx] >= threshold_page_name)
+    dup_pairs = list(zip(triu_idx[0][sim_mask], triu_idx[1][sim_mask]))
 
-            comp = docs[j]
-            sim_text = str_sim(base_text, clean_text(comp.get("text", "")))
-            sim_name = str_sim(base_name, clean_text(comp.get("page_name", "")))
+    # 构建重复簇：用图表示
+    graph = defaultdict(set)
+    for i, j in dup_pairs:
+        graph[i].add(j)
+        graph[j].add(i)
 
-            if sim_text >= threshold_content and sim_name >= threshold_page_name:
-                comp_time = parse_time(comp.get("time", ""))
-                seen.add(j)
+    visited = set()
+    keep = set()
 
-                # print(f"\n⚠️ 发现重复块 j={j}：")
-                # print(f"   - 标题相似度: {sim_name:.3f}，内容相似度: {sim_text:.3f}")
-                # print(f"   - 标题: {comp.get('page_name', '')}")
-                # print(f"   - 时间: {comp.get('time', '')}")
-                # print(f"   - 内容前50字: {comp.get('text', '')[:50]}")
+    def dfs(node, group):
+        visited.add(node)
+        group.append(node)
+        for neighbor in graph[node]:
+            if neighbor not in visited:
+                dfs(neighbor, group)
 
-                if comp_time > best_time:
-                    seen.add(i)
-                    best_doc = comp
-                    best_time = comp_time
-                    # print("✅ 当前块被替换为较新的重复块")
+    for i in range(n):
+        if i not in visited:
+            group = []
+            dfs(i, group)
+            if len(group) == 1:
+                keep.add(group[0])
+            else:
+                latest = max(group, key=lambda x: times[x])
+                keep.add(latest)
 
-        keep.append(best_doc)
-        i += 1
-
-    print(f"\n✅ 去重完成，原始 {len(docs)} 个块，保留 {len(keep)} 个块\n")
-    return keep
-
-def deduplicate_milvus_and_es(milvus_docs: list,
-                               es_docs: list,
-                               threshold_content=0.9,
-                               threshold_page_name=0.6,
-                               window: int = 3):
-    # Step 1: 各自内部去重
-    
-    milvus_deduped = deduplicate_ranked_blocks(milvus_docs, threshold_content, threshold_page_name, window)
-    es_deduped = deduplicate_ranked_blocks(es_docs, threshold_content, threshold_page_name, window)
-
-    # Step 2: 用 ES 去重 Milvus（根据时间保留最新）
-    final_milvus = []
-    final_es = list(es_deduped)  # 可修改列表
-
-    for m in milvus_deduped:
-        m_text = clean_text(m.get("text", ""))
-        m_name = clean_text(m.get("page_name", ""))
-        m_time = parse_time(m.get("time", ""))
-
-        keep_milvus = True
-        for e in es_deduped:
-            e_text = clean_text(e.get("text", ""))
-            e_name = clean_text(e.get("page_name", ""))
-            e_time = parse_time(e.get("time", ""))
-
-            if str_sim(m_text, e_text) >= threshold_content and str_sim(m_name, e_name) >= threshold_page_name:
-                if m_time > e_time:
-                    # Milvus 更新 → 保留 Milvus，剔除 ES 中对应项
-                    final_es.remove(e)
-                else:
-                    # ES 更新 → 舍弃 Milvus 块
-                    keep_milvus = False
-                break  # 每个块只比对一次
-
-        if keep_milvus:
-            final_milvus.append(m)
-
-    # print(f"✅ Milvus: 原始 {len(milvus_docs)} → 内部去重后 {len(milvus_deduped)} → 最终保留 {len(final_milvus)}")
-    # print(f"✅ ES: 原始 {len(es_docs)} → 内部去重后 {len(es_deduped)} → 最终保留 {len(final_es)}")
-
-    return final_milvus + final_es
-
-
-
-
-
-# ======================== 文档块分类函数 ========================
-def infer_chunk_category(page_url):
-    if any(k in page_url for k in ["规则", "制度", "法律", "审核"]):
-        return "规则类"
-    elif any(k in page_url for k in ["使用", "指南", "帮助", "操作", "功能"]):
-        return "操作类"
-    elif any(k in page_url for k in ["生态", "角色", "策略", "推广", "平台信息"]):
-        return "信息类"
-    else:
-        return "泛用类"
-
-
-# ======================== ChatGLM 摘要生成函数 ========================
-def generate_summary_ChatGLM(
-    text,
-    page_url,
-    model,
-    tokenizer,
-    max_new_tokens=150,
-):
-    if len(text) < max_new_tokens * 2:
-        print("⚠️ 文本长度不足，使用原文本")
-        return text[:max_new_tokens]
-
-    category = infer_chunk_category(page_url)
-    text = text.strip().replace("\x00", "")
-
-    prompt = (
-            f"你正在处理一篇电商平台的知识内容，属于“{category}”类。\n"
-            f"请你根据下方内容提炼其主要信息，要求如下：\n"
-            f"1. 概括要点，不要重复原文原句；\n"
-            f"2. 总长度不超过{max_new_tokens}字，使用简体中文；\n"
-            f"3. 输出格式为完整一句话。\n"
-            f"📂 来源路径：{page_url}\n"
-            f"📄 内容：\n{text}"
-        )
-
-    try:
-        messages = [{"role": "user", "content": prompt}]
-        inputs = tokenizer.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            return_tensors="pt",
-            return_dict=True,
-        ).to(model.device)
-
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=True,
-                top_p=0.8,
-                temperature=0.4
-            )
-        # 裁剪掉 prompt 部分
-        generated_ids = outputs[:, inputs["input_ids"].shape[1]:]
-        response = tokenizer.decode(generated_ids[0], skip_special_tokens=True).strip()
-        return response if response else text[:max_new_tokens]
-    except Exception as e:
-        print(f"⚠️ ChatGLM 摘要生成失败: {e}，使用 fallback")
-        return text[:max_new_tokens]
-
-
-
-# ======================== ChatGLM 问题生成函数 ========================
-def generate_question_ChatGLM(
-    text,
-    page_url,
-    model,
-    tokenizer,
-    max_new_tokens=64,
-    fallback_question="该内容可构造相关业务问题"
-):
-
-    category = infer_chunk_category(page_url)
-    text = text.strip().replace("\x00", "")
-
-    if category == "规则类":
-        hint = "平台是否允许、规则约束、违规处理"
-    elif category == "操作类":
-        hint = "如何操作、是否可用、使用方法"
-    elif category == "信息类":
-        hint = "平台背景、产品定位、策略设计"
-    else:
-        hint = "用户实际可能会问的问题"
-
-    prompt = (
-        f"你是一个电商平台知识问答构建助手，请根据以下内容生成一个有实际价值的用户问题。\n"
-        f"要求：\n"
-        f"- 问题应体现“{hint}”；\n"
-        f"- 禁止复述原文，应提炼操作、判断或咨询点；\n"
-        f"- 只输出一个简体中文问题句，不加说明。\n"
-        f"📂 来源路径：{page_url}\n"
-        f"📄 内容：\n{text}"
-    )
-
-    try:
-        messages = [{"role": "user", "content": prompt}]
-        inputs = tokenizer.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            return_tensors="pt",
-            return_dict=True,
-        ).to(model.device)
-
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=True,
-                top_p=0.9,
-                temperature=0.7
-            )
-        generated_ids = outputs[:, inputs["input_ids"].shape[1]:]
-        response = tokenizer.decode(generated_ids[0], skip_special_tokens=True).strip()
-        return response if response else fallback_question
-    except Exception as e:
-        print(f"⚠️ ChatGLM 问题生成失败: {e}，使用 fallback")
-        return fallback_question
-
-
+    kept = sorted(list(keep))
+    print(f"✅ 原始 {n} 个块，重复对 {len(dup_pairs)}，去重后保留 {len(kept)}")
+    return [docs[i] for i in kept]
 
 
 # ======================== 文档块生成函数 ========================
-def _generate_block_documents(
-    block_tree,
-    max_node_words,
-    page_url="unknown.html",
-    summary_model=None,
-    summary_tokenizer=None,
-    time_value=""
-):
-    """
-    生成文档块的元信息列表（doc_meta），用于保存为 JSON 或入库。
-    打印处理进度和内容摘要信息。
-    """
-    from utils.text_process_utils import extract_title_from_block, clean_invisible
-
-    path_tags = [b[0] for b in block_tree]
-    doc_meta = []
-
-    print(f"📦 共提取块数：{len(path_tags)}")
-
-    for pidx, tag in enumerate(path_tags):
-        print(f"\n🧩 正在处理第 {pidx+1}/{len(path_tags)} 个 block")
-        text = tag.get_text().strip().replace("\x00", "")
-        text = clean_invisible(text)
-        if not text:
-            print("⚠️ 空内容，跳过")
-            continue
-
-        preview = text[:80].replace('\n', ' ') + ("..." if len(text) > 80 else "")
-        print(f"📄 文本预览：{preview}")
-
-        title = extract_title_from_block(tag)
-        print(f"🏷️ 提取标题：{title[:128]}")
-
-        page_name = os.path.splitext(os.path.basename(page_url))[0]
-        summary = ""
-
-        if summary_model and summary_tokenizer:
-            summary = generate_summary_ChatGLM(text, page_url, summary_model, summary_tokenizer)
-            print(f"✅ 摘要生成成功：{summary}")
-            question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
-            print(f"✅ 问题生成成功：{question}")
-
-        doc_meta.append({
-            "chunk_idx": pidx,
-            "page_name": page_name,
-            "title": title[:128],
-            "page_url": page_url,
-            "summary": summary,
-            "question": question,
-            "text": text,
-            "time": time_value,
-        })
-
-    print(f"\n✅ 所有块处理完毕，共生成 {len(doc_meta)} 条有效文档块")
-    return doc_meta
-
-
 def generate_block_documents(
     block_tree,
     max_node_words,
     page_url="unknown.html",
     summary_model=None,
     summary_tokenizer=None,
-    time_value=""
+    time_value="",
+    gen_question=False,
+    use_vllm=False,
 ):
     """
     生成结构化文档块，支持表格自动切分，统一生成 summary 和 question。
     """
-    from utils.text_process_utils import extract_title_from_block, clean_invisible
-    import os
 
     path_tags = [b[0] for b in block_tree]
     doc_meta = []
@@ -570,9 +254,12 @@ def generate_block_documents(
                     text = clean_invisible(current_text.strip())
                     if text:
                         summary, question = "", ""
-                        if summary_model and summary_tokenizer:
+                        if use_vllm:
+                            generate_summary_vllm(text, page_url)
+                        elif summary_model and summary_tokenizer:
                             summary = generate_summary_ChatGLM(text, page_url, summary_model, summary_tokenizer)
-                            question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
+                            if gen_question:
+                                question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
 
                         title_with_range = f"{title[:96]} 表格行{row_range_start}-{idx-1}"
                         doc_meta.append({
@@ -599,10 +286,12 @@ def generate_block_documents(
             text = clean_invisible(current_text.strip())
             if text:
                 summary, question = "", ""
-                if summary_model and summary_tokenizer:
+                if use_vllm:
+                    generate_summary_vllm(text, page_url)
+                elif summary_model and summary_tokenizer:
                     summary = generate_summary_ChatGLM(text, page_url, summary_model, summary_tokenizer)
-                    question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
-
+                    if gen_question:
+                        question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
                 title_with_range = f"{title[:96]} 表格行{row_range_start}-{len(rows)}"
                 doc_meta.append({
                     "chunk_idx": chunk_idx,
@@ -629,10 +318,12 @@ def generate_block_documents(
             print(f"📄 文本预览：{preview}")
 
             summary, question = "", ""
-            if summary_model and summary_tokenizer:
+            if use_vllm:
+                generate_summary_vllm(text, page_url)
+            elif summary_model and summary_tokenizer:
                 summary = generate_summary_ChatGLM(text, page_url, summary_model, summary_tokenizer)
-                question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
-
+                if gen_question:
+                    question = generate_question_ChatGLM(text, page_url, summary_model, summary_tokenizer)
             doc_meta.append({
                 "chunk_idx": chunk_idx,
                 "page_name": page_name,
