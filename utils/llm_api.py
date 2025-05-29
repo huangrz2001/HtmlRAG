@@ -1,12 +1,50 @@
-import os
-import re
-import jieba
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import json
-from datetime import datetime
+# -*- coding: utf-8 -*-
+"""
+大模型摘要生成与多轮问答重写模块（ChatGLM / vLLM 支持）
+
+本模块封装了使用 ChatGLM 与 vLLM 接口完成以下任务的能力：
+1. 文档块摘要生成（支持并发控制和类型自适应）
+2. 问题生成（根据文档块自动生成潜在用户问题）
+3. 多轮对话重写（将用户模糊提问重写为独立清晰问题）
+4. 向量生成（基于 vLLM Embedding 接口）
+
+模块亮点：
+------------------------------------------------
+- 支持 ChatGLM 本地模型与 vLLM 部署服务两种调用方式
+- 摘要/问句生成根据 URL 路径智能分类（规则类 / 操作类 / 信息类 / 泛用类）
+- 多轮 query 重写任务支持上下文融合，提示词经过 prompt tuning 优化
+- 提供 vLLM 并发控制机制（通过 asyncio.Semaphore 实现请求速率调控）
+- 支持 vLLM 嵌入接口，可用于后续向量化搜索
+
+主要函数说明：
+------------------------------------------------
+1. 摘要生成：
+   - `generate_summary_vllm`: 使用 vLLM 接口生成摘要，支持超时与并发限制
+   - `generate_summary_ChatGLM`: 使用本地 ChatGLM 模型生成摘要
+
+2. 问题生成：
+   - `generate_question_ChatGLM`: 根据文档内容和类别生成一个代表性问题
+
+3. 多轮对话重写：
+   - `rewrite_query_ChatGLM`: 使用 ChatGLM 对话模板改写用户模糊问题
+   - `rewrite_query_vllm`: 使用 vLLM Chat API 改写用户模糊问题
+
+4. 其他辅助：
+   - `infer_chunk_category`: 根据 page_url 分类文档内容（规则/操作/信息/泛用）
+   - `get_embedding_from_vllm`: 调用 vLLM embedding 接口获取文本向量（适配 BCE 模型）
+
+配置依赖项：
+------------------------------------------------
+- `CONFIG` 中可配置：
+  - `"vllm_api_url"`：vLLM 推理服务地址
+  - `"vllm_max_concurrent_requests"`：最大并发数
+  - `"vllm_timeout"`：请求超时时间（秒）
+
+"""
+
+
+
 import torch
-from difflib import SequenceMatcher
 import requests
 import time
 import asyncio
@@ -31,6 +69,20 @@ def infer_chunk_category(page_url):
     else:
         return "泛用类"
 
+
+
+
+def get_embedding_from_vllm(text: str) -> list[float]:
+    url = "http://0.0.0.0:8010/v1/embeddings"
+    payload = {
+        "model": "/home/algo/AD_agent/models/bce-embedding-base_v1",
+        "input": [text],    # 一定要是列表
+    }
+    resp = requests.post(url, json=payload, timeout=5)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["data"][0]["embedding"]
+    
 
 
 # ======================== vLLM 摘要生成函数 ========================
@@ -75,7 +127,6 @@ def generate_summary_vllm(text, page_url, max_new_tokens=150, model="glm") -> st
     except Exception as e:
         print(f"⚠️ vLLM 摘要生成失败: {e}，fallback 到截断文本")
         return text[:max_new_tokens]
-
 
 
 # ======================== ChatGLM 摘要生成函数 ========================

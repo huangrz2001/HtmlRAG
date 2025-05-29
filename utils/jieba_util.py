@@ -1,3 +1,39 @@
+# -*- coding: utf-8 -*-
+"""
+HTML 文本高频短语提取与分词词典生成脚本
+
+本模块用于批量提取中文 HTML 文本中的高频短语，支持 n-gram 统计、句级截断、冗余过滤等操作，最终生成适配 `jieba` 和 IK Analyzer 的自定义词典文件。
+
+核心功能：
+------------------------------------------------
+1. 文本提取与清洗：
+   - `extract_text_from_html`: 从单个 HTML 文件中提取纯文本内容。
+   - `collect_all_html_texts`: 遍历目录，提取所有 HTML 文件文本。
+
+2. 高频短语提取：
+   - `extract_phrases_by_frequency`: 基于句级切分和滑动窗口方式提取 n-gram 词组，支持频率统计与长度控制。
+   - `split_sentences`: 基于中文标点符号断句，避免跨句拼词。
+
+3. 冗余词过滤策略：
+   - `filter_keep_longest_only`: 仅保留最长不重叠短语（按包含关系过滤）。
+   - `filter_by_freq_ratio`: 若短词是某长词子串，且频率相近，则视为冗余短词，过滤掉。
+
+4. 分词词典构建与保存：
+   - `save_to_jieba_dict`: 将提取结果保存为 `jieba` 词典格式：词语 频率 词性（n）。
+   - 自动生成 IK Analyzer 所需的纯词条词典文件 `my_dict.dic`。
+
+配置与用法：
+------------------------------------------------
+- 默认处理目录为 `"巨量千川知识库all"`，可在 `__main__` 中自定义。
+- 支持指定 `ngram` 范围（如 2~12）与提取数量上限 `top_k`。
+- 最终词典默认保存为：
+  - `user_dict.txt`: jieba 格式（可用于中文分词增强）
+  - `my_dict.dic`: IK 分词器词条字典（仅含词项）
+
+"""
+
+
+
 import os
 import re
 from collections import Counter

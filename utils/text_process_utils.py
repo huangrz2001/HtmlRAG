@@ -1,3 +1,40 @@
+
+# -*- coding: utf-8 -*-
+"""
+文本处理与文档块生成模块（用于 HTML-RAG 知识库构建）
+
+本模块负责从 HTML 清洗结果中提取结构化文档块，生成摘要与问句，并提供查询构建、文本清洗与去重能力，
+是智能客服/文档问答等 RAG 系统中“切块-摘要-向量化”流程的核心组件。
+
+核心功能结构：
+------------------------------------------------
+1. 文本清洗与分词：
+   - `clean_text`: 移除所有非中英文与数字字符。
+   - `jieba_cut_clean`: 清洗后进行自定义分词（支持外部 user_dict）。
+   - `clean_invisible`: 清除零宽与控制类不可见字符。
+
+2. 语义块标题提取：
+   - `extract_title_from_block`: 提取 HTML 块中的第一个标题或非空文本作为 chunk title。
+
+3. 查询构建（用于 ES 倒排检索）：
+   - `build_optimal_jieba_query`: 综合精确匹配、模糊查询、短语匹配与同义词扩展构建结构化 bool 查询。
+
+4. 相似内容去重：
+   - `deduplicate_ranked_blocks_pal`: 基于 TF-IDF 和 cosine 相似度计算文本和页面名的相似性，按时间优先保留最优版本。
+
+5. 文档块生成：
+   - `generate_block_documents`: 将结构化 HTML 节点生成带 metadata 的 chunk 列表，支持表格行切分、摘要生成、问句构造。
+     - 支持摘要生成方式：
+       - `generate_summary_ChatGLM`（调用 ChatGLM 接口）
+       - `generate_summary_vllm`（使用 vLLM HTTP 接口）
+     - 可选生成问句 `generate_question_ChatGLM`
+
+6. 块数据持久化：
+   - `save_doc_meta_to_block_dir`: 将 HTML 块的结构化信息以 JSON 格式写入指定路径，路径结构与原始 HTML 保持一致。
+
+   """
+
+
 import os
 import re
 import jieba

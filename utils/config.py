@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+"""
+通用配置加载模块：从上级目录的 config.json 文件中加载配置，控制全局统一的配置信息
+"""
+
 import json
 import os
 

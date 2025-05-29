@@ -1,11 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-HTML 清洗与结构化处理模块
+HTML 清洗与结构化分块模块
 
-核心功能：
-- clean_html: 对原始 HTML 进行清洗（保留表格结构、标题域包装等）
-- build_block_tree: 将清洗后的 HTML 拆解成结构化的文本块（用于向量生成）
+本模块用于处理网页抓取或原始 HTML 文件，为下游知识检索与向量化系统（如 RAG）提供高质量结构化输入。
+支持表格还原、标题域包装、语义块切分、冗余标签剔除、合并单元格展开等操作。
+
+核心功能概览：
+------------------------------------------------
+1. HTML 清洗（结构保留 + 标签净化）：
+   - `clean_html`: 清洗入口，结合简化、域包装与字符规范化等步骤。
+   - `simplify_html_keep_table`: 保留表格结构，去除样式脚本与冗余属性。
+   - `warp_domains`: 对标题与表格结构进行语义封装（如 h2_domain、table_domain）。
+   - `expand_table_spans`: 展平所有 rowspan/colspan 合并单元格，转换为矩阵表格。
+   - `clean_xml`, `clean_html_text`: 清理 XML 声明、markdown 标签与多余换行空格。
+
+2. HTML 结构化切块：
+   - `build_block_tree`: 将清洗后的 HTML 拆解为语义块，支持按最大词数与最小内容量控制。
+   - 自动记录路径信息与层级深度，保留重要结构节点（标题、表格等）。
+
+3. 单文件处理入口：
+   - `process_html_file`: 执行完整清洗 + 表格展开 + time 标签保留，并保存到目标路径。
+
+参数与适用说明：
+------------------------------------------------
+- `max_node_words`: 控制每个切分块的最大词数（适配向量生成限制，如 tokenizer 长度）。
+- `min_node_words`: 控制保留的最小块单位，避免碎片。
+- `zh_char`: 为 True 时，使用字符长度而非词数作为分割依据（适配中文纯文本）。
+
 """
+
+
 
 import re
 import json
@@ -83,6 +107,7 @@ def simplify_html_keep_table(soup, keep_attr=False):
 
     # 清除空行
     return "\n".join(line for line in str(soup).split("\n") if line.strip())
+
 
 def warp_domains(html: str) -> str:
     """将 HTML 中的 <hX> 标签和 <table> 标签进行包装"""

@@ -1,12 +1,38 @@
 # -*- coding: utf-8 -*-
 """
-文档索引与检索核心模块
+HTML 文档索引与多模态检索核心模块
 
-本模块包含：
-- Elasticsearch 索引重建逻辑
-- Milvus 向量库结构定义与重建
-- HTML 文档块的摘要生成与向量入库
-- 多源检索与去重处理逻辑（Milvus + ES）
+本模块提供面向知识型问答系统（如 RAG）的一体化向量索引管理与查询能力，支持基于 Milvus 和 Elasticsearch 的双模检索方案，
+涵盖向量索引构建、文档块插入与删除、索引重建、文本摘要与语义去重、多源融合检索与 reranker 精排等功能。
+
+模块功能概览：
+------------------------------------------------
+1. 向量库（Milvus）管理：
+   - `reset_milvus`: 重建 Milvus collection，支持主键自增与多字段结构。
+   - `insert_block_to_milvus`: 向量块插入，支持批量写入与嵌入生成。
+   - `delete_blocks_from_milvus`: 按 file_idx 删除 Milvus 向量。
+   - `query_milvus_blocks`: 基于语义向量进行 ANN 检索，支持 reranker 精排。
+
+2. 关键词库（Elasticsearch）管理：
+   - `reset_es`: 重建 Elasticsearch 索引结构，使用 IK 分词器进行中文优化。
+   - `insert_block_to_es`: 批量插入文档块文本至 Elasticsearch。
+   - `delete_blocks_from_es`: 按 file_idx 删除 ES 文档块。
+   - `query_es_blocks`: 基于关键词抽取构建查询语句，执行倒排检索。
+
+3. 多源融合检索与去重：
+   - `query_blocks`: 同时从 Milvus 与 ES 检索文档块，支持时间优先的去重策略与 reranker 精排逻辑。
+
+4. reranker 模型精排：
+   - `Reranker`: 使用 transformer 模型对候选块进行 query-passage 精排。
+   - `rerank_results`: 对候选文档块按照 relevance 分数重新排序。
+
+依赖环境与配置说明：
+------------------------------------------------
+- Milvus >= 2.x（需预启动服务，监听 19530 端口）
+- Elasticsearch >= 7.x（需启用 IK 分词器）
+- LangChain、PyMilvus、transformers、torch 等
+- 外部依赖配置通过 utils/config.py 注入：如 milvus_host, es_host, index_name
+
 """
 
 import os
@@ -144,7 +170,6 @@ def reset_es(index_name=index_name):
         },
     )
     print(f"✅ ES 索引 '{index_name}' 已成功创建（含 file_idx）")
-
 
 # ======================== Milvus 向量库重建 ========================
 def reset_milvus(collection_name=index_name, dim=768):
