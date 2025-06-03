@@ -34,7 +34,6 @@
 
    """
 
-
 import os
 import re
 import jieba
@@ -44,9 +43,13 @@ import json
 from datetime import datetime
 import torch
 from difflib import SequenceMatcher
-from utils.llm_api import generate_summary_ChatGLM, generate_question_ChatGLM, generate_summary_vllm
+from utils.llm_api import generate_summary_ChatGLM, generate_question_ChatGLM, generate_summary_vllm, generate_summary_vllm_async
 import numpy as np
 from collections import defaultdict
+import aiohttp
+import asyncio
+import time
+
 
 # 关闭并行化警告，避免控制台冗余信息
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -234,6 +237,30 @@ def deduplicate_ranked_blocks_pal(docs, threshold_content=0.9, threshold_page_na
     print(f"✅ 原始 {n} 个块，重复对 {len(dup_pairs)}，去重后保留 {len(kept)}")
     return [docs[i] for i in kept]
 
+def save_doc_meta_to_block_dir(doc_meta, html_path, html_root_dir, block_root_dir):
+    """
+    保存 JSON 文件，路径映射：
+    html_path = a/b/c.html → 保存为 a_blocks/b/c.json
+    """
+    # 相对路径：b/c.html
+    rel_path = os.path.relpath(html_path, html_root_dir)
+
+    # 输出路径：a_blocks/b/c.json
+    rel_json_path = os.path.splitext(rel_path)[0] + ".json"
+    json_full_path = os.path.join(block_root_dir, rel_json_path)
+
+    # 创建目标目录
+    os.makedirs(os.path.dirname(json_full_path), exist_ok=True)
+
+    # 写入 JSON 文件
+    with open(json_full_path, "w", encoding="utf-8") as f:
+        json.dump(doc_meta, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ JSON 已保存：{json_full_path}")
+    return json_full_path
+
+
+
 
 # ======================== 文档块生成函数 ========================
 def generate_block_documents(
@@ -244,7 +271,7 @@ def generate_block_documents(
     summary_tokenizer=None,
     time_value="",
     gen_question=False,
-    use_vllm=False,
+    use_vllm=True,
 ):
     """
     生成结构化文档块，支持表格自动切分，统一生成 summary 和 question。
@@ -378,26 +405,108 @@ def generate_block_documents(
 
 
 
-def save_doc_meta_to_block_dir(doc_meta, html_path, html_root_dir, block_root_dir):
-    """
-    保存 JSON 文件，路径映射：
-    html_path = a/b/c.html → 保存为 a_blocks/b/c.json
-    """
-    # 相对路径：b/c.html
-    rel_path = os.path.relpath(html_path, html_root_dir)
+async def generate_block_documents_async(
+    block_tree,
+    max_node_words,
+    page_url="unknown.html",
+    summary_model=None,
+    summary_tokenizer=None,
+    time_value="",
+    gen_question=False,
+    use_vllm=True,
+    batch_size=32
+):
+    path_tags = [b[0] for b in block_tree]
+    doc_meta, chunk_idx, tasks = [], 0, []
+    page_name = os.path.splitext(os.path.basename(page_url))[0]
 
-    # 输出路径：a_blocks/b/c.json
-    rel_json_path = os.path.splitext(rel_path)[0] + ".json"
-    json_full_path = os.path.join(block_root_dir, rel_json_path)
+    def row_to_text(row):
+        return " ".join(cell.strip() for cell in row.stripped_strings) + "\n"
 
-    # 创建目标目录
-    os.makedirs(os.path.dirname(json_full_path), exist_ok=True)
+    for tag in path_tags:
+        title = extract_title_from_block(tag)
+        is_table_block = (tag.name == "table") or tag.find("table") is not None
 
-    # 写入 JSON 文件
-    with open(json_full_path, "w", encoding="utf-8") as f:
-        json.dump(doc_meta, f, ensure_ascii=False, indent=2)
+        if is_table_block:
+            table = tag.find("table") if tag.name != "table" else tag
+            rows = table.find_all("tr")
+            if not rows:
+                continue
 
-    print(f"✅ JSON 已保存：{json_full_path}")
-    return json_full_path
+            header_text = row_to_text(rows[0])
+            current_text = header_text
+            current_words = len(re.findall(r"[\u4e00-\u9fa5a-zA-Z0-9]", header_text))
+            row_range_start = 1
 
+            for idx, row in enumerate(rows[1:], start=2):
+                row_text = row_to_text(row)
+                row_words = len(re.findall(r"[\u4e00-\u9fa5a-zA-Z0-9]", row_text))
+
+                if current_words + row_words > max_node_words:
+                    text = clean_invisible(current_text.strip())
+                    if text:
+                        doc_meta.append({
+                            "chunk_idx": chunk_idx,
+                            "page_name": page_name,
+                            "title": f"{title[:96]} 表格行{row_range_start}-{idx-1}",
+                            "page_url": page_url,
+                            "summary": "",
+                            "question": "",
+                            "text": text,
+                            "time": time_value,
+                        })
+                        tasks.append((chunk_idx, text, page_url))
+                        chunk_idx += 1
+                    current_text = header_text + row_text
+                    current_words = len(re.findall(r"[\u4e00-\u9fa5a-zA-Z0-9]", current_text))
+                    row_range_start = idx
+                else:
+                    current_text += row_text
+                    current_words += row_words
+
+            text = clean_invisible(current_text.strip())
+            if text:
+                doc_meta.append({
+                    "chunk_idx": chunk_idx,
+                    "page_name": page_name,
+                    "title": f"{title[:96]} 表格行{row_range_start}-{len(rows)}",
+                    "page_url": page_url,
+                    "summary": "",
+                    "question": "",
+                    "text": text,
+                    "time": time_value,
+                })
+                tasks.append((chunk_idx, text, page_url))
+                chunk_idx += 1
+
+        else:
+            text = clean_invisible(tag.get_text().replace("\x00", ""))
+            if not text:
+                continue
+            doc_meta.append({
+                "chunk_idx": chunk_idx,
+                "page_name": page_name,
+                "title": title[:128],
+                "page_url": page_url,
+                "summary": "",
+                "question": "",
+                "text": text,
+                "time": time_value,
+            })
+            tasks.append((chunk_idx, text, page_url))
+            chunk_idx += 1
+
+    print(f"\n🚀 开始分批并发生成 {len(tasks)} 个摘要 ...")
+    start = time.time()
+
+    for i in range(0, len(tasks), batch_size):
+        batch = tasks[i:i + batch_size]
+        summaries = await asyncio.gather(*[
+            generate_summary_vllm_async(text, url) for _, text, url in batch
+        ])
+        for j, (chunk_idx_i, _, _) in enumerate(batch):
+            doc_meta[chunk_idx_i]["summary"] = summaries[j]
+
+    print(f"✅ 摘要生成完成（耗时 {time.time() - start:.2f}s）")
+    return doc_meta
 

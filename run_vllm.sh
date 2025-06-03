@@ -2,8 +2,8 @@
 
 # ========== 配置参数 ==========
 GPU_IDS="0,1"
-PORT=8000
-MEM_UTIL=0.6        # 显存使用率
+PORT=8011
+MEM_UTIL=0.7        # 显存使用率
 MAX_LEN=4096
 TP_SIZE=2
 SWAP_SPACE=4

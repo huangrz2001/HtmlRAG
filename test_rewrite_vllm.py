@@ -29,28 +29,6 @@ def build_prompt(dialogue, final_query):
     return prompt
 
 
-def rewrite_query_vllm_requests(dialogue, final_query, api_url="http://localhost:8000/v1/chat/completions", max_tokens=128):
-    prompt = build_prompt(dialogue, final_query)
-    payload = {
-        "model": "glm",
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": max_tokens,
-        "temperature": 0.4,
-        "top_p": 0.8,
-    }
-
-    try:
-        start = time.time()
-        response = requests.post(api_url, headers={"Content-Type": "application/json"}, json=payload, timeout=60)
-        duration = time.time() - start
-        response.raise_for_status()
-        result = response.json()["choices"][0]["message"]["content"].strip()
-        return result or final_query, duration
-    except Exception as e:
-        print(f"⚠️ vLLM 请求失败: {e}")
-        return final_query, -1
-
-
 async def query_once(session, url, payload):
     async with session.post(url, json=payload) as resp:
         data = await resp.json()
@@ -60,7 +38,7 @@ async def main(input_file):
     with open(input_file, "r", encoding="utf-8") as f:
         dataset = [json.loads(line) for line in f]
 
-    url = "http://localhost:8000/v1/chat/completions"
+    url = "http://localhost:8011/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
 
     prompts = []

@@ -130,7 +130,6 @@
 | 向量嵌入 |  `bce-embedding-base_v1`    |
 | 精排 Reranker  | `bce-reranker-base_v1`              |
 | 摘要和重写模型       | `THUDM/glm-4-9b-chat`                            |
-
 ---
 
 

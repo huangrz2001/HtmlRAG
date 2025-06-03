@@ -43,19 +43,17 @@
 """
 
 
-
+import httpx
 import torch
 import requests
 import time
 import asyncio
-from utils.config import CONFIG
+from utils.config import CONFIG, get_aiohttp_session, close_aiohttp_session, sem
+import aiohttp
 
 
-
-# Semaphore 控制并发负载
-sem = asyncio.Semaphore(CONFIG.get("vllm_max_concurrent_requests", 32))
 timeout = CONFIG.get("vllm_timeout", 60)
-api_url = CONFIG.get("vllm_api_url", "http://localhost:8000/v1/chat/completions")
+api_url = CONFIG.get("vllm_api_url", "http://localhost:8011/v1/chat/completions")
 
 
 # ======================== 文档块分类函数 ========================
@@ -116,16 +114,55 @@ def generate_summary_vllm(text, page_url, max_new_tokens=150, model="glm") -> st
     api_url = CONFIG.get("vllm_api_url", "http://localhost:8000/v1/chat/completions")
 
     try:
-        with sem:  # 控制并发
-            start = time.time()
-            response = requests.post(api_url, headers={"Content-Type": "application/json"}, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()["choices"][0]["message"]["content"].strip()
-            duration = time.time() - start
-            print(f"✅ vLLM摘要成功 (耗时 {duration:.2f}s)")
-            return result or text[:max_new_tokens]
+        start = time.time()
+        response = requests.post(api_url, headers={"Content-Type": "application/json"}, json=payload, timeout=60)
+        response.raise_for_status()
+        result = response.json()["choices"][0]["message"]["content"].strip()
+        duration = time.time() - start
+        print(f"✅ vLLM摘要成功 (耗时 {duration:.2f}s)")
+        return result or text[:max_new_tokens]
     except Exception as e:
         print(f"⚠️ vLLM 摘要生成失败: {e}，fallback 到截断文本")
+        return text[:max_new_tokens]
+
+
+
+async def generate_summary_vllm_async(text, page_url, model="glm", max_new_tokens=150):
+    """
+    真正异步并发调用 vLLM 接口生成摘要
+    """
+    category = infer_chunk_category(page_url)
+    text = text.strip().replace("\x00", "")
+
+    prompt = (
+        f"你正在处理一篇电商平台的知识内容，属于“{category}”类。\n"
+        f"请你根据下方内容提炼其主要信息，要求如下：\n"
+        f"1. 概括要点，不要重复原文原句；\n"
+        f"2. 总长度不超过{max_new_tokens}字，使用简体中文；\n"
+        f"3. 输出格式为完整一句话。\n"
+        f"📂 来源路径：{page_url}\n"
+        f"📄 内容：\n{text}"
+    )
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_new_tokens,
+        "temperature": 0.4,
+        "top_p": 0.8,
+    }
+
+    url = CONFIG.get("vllm_api_url", "http://localhost:8000/v1/chat/completions")
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.post(url, json=payload, timeout=CONFIG.get("vllm_timeout", 60)) as resp:
+                resp.raise_for_status()
+                result = await resp.json()
+                return result["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"⚠️ vLLM 异步摘要失败: {e}，返回截断文本")
         return text[:max_new_tokens]
 
 
@@ -336,9 +373,7 @@ def rewrite_query_vllm(
         "temperature": 0.4,
         "top_p": 0.8
     }
-
     try:
-        # with sem:  # 限制并发请求
         start = time.time()
         response = requests.post(api_url, headers={"Content-Type": "application/json"}, json=payload, timeout=timeout)
         response.raise_for_status()
@@ -349,3 +384,85 @@ def rewrite_query_vllm(
     except Exception as e:
         print(f"⚠️ vLLM 重写失败: {e}")
         return fallback_rewrite
+
+
+async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_tokens=128):
+    """
+    使用 vLLM 异步接口重写 query，带全局 session 和并发控制
+    """
+    fallback_rewrite = final_query
+    prompt = (
+        "你是一个电商平台智能客服的对话清晰化助手。\n"
+        "用户提出的问题可能存在复杂指代、上下文依赖或表达模糊等问题。\n"
+        "你需要根据多轮历史对话，丰富润色用户的当前问题，使其成为一个清晰、完整的独立问题。\n\n"
+        "下面是要求：\n"
+        "- 准确解析用户真实意图，使得这个独立问题尽量完整，尽可能包含所有信息；\n"
+        "- 问题越丰富越好，特别是要捕捉到关键的指代，场景，特别针对的问题和例子等等；\n"
+        "- 不可以捏造不存在的信息；\n"
+        "- 不添加解释、注释、引导语等，只输出润色后的问题句。\n\n"
+        "下面是历史对话：\n"
+    )
+    for turn in dialogue:
+        role = "用户" if turn.get("speaker") == "user" else "系统"
+        content = turn.get("text", "").replace("\n", " ").strip()
+        prompt += f"{role}：{content}\n"
+
+    prompt += f"用户当前问题是：{final_query.strip()}\n请你遵循要求润色为一个清晰、完整的独立问题："
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_new_tokens,
+        "temperature": 0.4,
+        "top_p": 0.8,
+    }
+    try:
+        async with sem:
+            session = await get_aiohttp_session()
+            start = time.time()
+            async with session.post(api_url, json=payload) as resp:
+                resp.raise_for_status()
+                result = await resp.json()
+                content = result["choices"][0]["message"]["content"].strip()
+                print(f"✅ 重写成功（耗时 {time.time() - start:.2f}s）")
+                return content or fallback_rewrite
+    except Exception as e:
+        print(f"⚠️ vLLM 异步重写失败: {e}")
+        return fallback_rewrite
+
+
+async def generate_summary_vllm_async(text, page_url, model="glm", max_new_tokens=150):
+    """
+    使用 vLLM 异步接口生成摘要，带全局 session 和并发控制
+    """
+    category = infer_chunk_category(page_url)
+    text = text.strip().replace("\x00", "")
+
+    prompt = (
+        f"你正在处理一篇电商平台的知识内容，属于“{category}”类。\n"
+        f"请你根据下方内容提炼其主要信息，要求如下：\n"
+        f"1. 概括要点，不要重复原文原句；\n"
+        f"2. 总长度不超过{max_new_tokens}字，使用简体中文；\n"
+        f"3. 输出格式为完整一句话。\n"
+        f"📂 来源路径：{page_url}\n"
+        f"📄 内容：\n{text}"
+    )
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_new_tokens,
+        "temperature": 0.4,
+        "top_p": 0.8,
+    }
+
+    try:
+        async with sem:
+            session = await get_aiohttp_session()
+            async with session.post(api_url, json=payload) as resp:
+                resp.raise_for_status()
+                result = await resp.json()
+                return result["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"⚠️ vLLM 异步摘要失败: {e}，返回截断文本")
+        return text[:max_new_tokens]

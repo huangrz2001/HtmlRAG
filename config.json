@@ -6,11 +6,11 @@
   "index_name": "curd_env",
   "milvus_host": "192.168.7.247",
   "es_host": "192.168.7.247",
-  "device": "cuda:1",
+  "device": "cuda:0",
   "max_node_words_embed": 4096,
   "min_node_words_embed": 48,
 
-  "vllm_api_url": "http://localhost:8000/v1/chat/completions",
+  "vllm_api_url": "http://localhost:8011/v1/chat/completions",
   "vllm_max_concurrent_requests": 32,
   "vllm_timeout": 60
 }
