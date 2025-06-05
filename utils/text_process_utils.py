@@ -49,7 +49,7 @@ from collections import defaultdict
 import aiohttp
 import asyncio
 import time
-
+from utils.config import CONFIG, logger
 
 # 关闭并行化警告，避免控制台冗余信息
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -428,6 +428,7 @@ async def generate_block_documents_async(
         is_table_block = (tag.name == "table") or tag.find("table") is not None
 
         if is_table_block:
+            logger.debug(f"{page_url} 检测到表格类型，执行按行拼接切分，标题：{title[:128]}")
             table = tag.find("table") if tag.name != "table" else tag
             rows = table.find_all("tr")
             if not rows:
@@ -496,7 +497,7 @@ async def generate_block_documents_async(
             tasks.append((chunk_idx, text, page_url))
             chunk_idx += 1
 
-    print(f"\n🚀 开始分批并发生成 {len(tasks)} 个摘要 ...")
+    logger.debug(f"{page_url} 任务准备完毕，开始分批并发生成 {len(tasks)} 个摘要 ...")
     start = time.time()
 
     for i in range(0, len(tasks), batch_size):
@@ -507,6 +508,6 @@ async def generate_block_documents_async(
         for j, (chunk_idx_i, _, _) in enumerate(batch):
             doc_meta[chunk_idx_i]["summary"] = summaries[j]
 
-    print(f"✅ 摘要生成完成（耗时 {time.time() - start:.2f}s）")
+    logger.debug(f"{page_url} 所有块处理完毕，共生成 {len(doc_meta)} 条有效文档块, 耗时 {time.time() - start:.2f}")
     return doc_meta
 

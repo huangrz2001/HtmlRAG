@@ -58,7 +58,9 @@
 ├── step2_block_construct.py          # Step 2: 将 HTML 结构划分为文档块（含摘要）
 ├── step3_db_construct.py             # Step 3: 插入已分块的 JSON 文档到 ES 与 Milvus
 ├── step4_query.py                    # Step 4: 根据query查询数据库
-├── main.py                           # 封装的增删以及重写的API服务
+├── main.py                           # fastAPI支持，使用uvicorn启动
+├── test_rewrite_api.py               # 测试API并发调用负载能力
+├── test_rewrite_vllm.py              # 测试原生vLLM并发负载能力
 ├── rewrite_vllm.py                   # vllm负载测试
 ├── run_vllm.sh                       # 启动vllm服务（ChatGLM4-9B）
 ├── config.json                       # 全局的配置文件
@@ -152,6 +154,8 @@
 ```bash
 conda env create -f environment.yml
 conda activate htmlrag
+bash run_vllm.sh                                        # 启动vLLM服务
+uvicorn main:app --host 0.0.0.0 --port 8080 --reload    # 启动API
 ```
 
 主要依赖组件（已在 `environment.yml` 中包含）：

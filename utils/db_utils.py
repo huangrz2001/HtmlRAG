@@ -58,7 +58,7 @@ from langchain.schema import Document
 from time import sleep
 from elasticsearch import Elasticsearch, helpers
 import jieba.analyse
-from utils.config import CONFIG
+from utils.config import CONFIG, logger
 
 # 加载自定义词典（适用于电商/运营场景）
 jieba.load_userdict("./user_dict.txt")
@@ -199,7 +199,7 @@ def reset_milvus(collection_name=index_name, dim=768):
 
 # ======================== 插入 Milvus ========================
 def insert_block_to_milvus(doc_meta_list, embedder, collection_name, batch_size=100) -> int:
-    print(f"🧠 正在插入向量到 Milvus collection: {collection_name} ...")
+    # logger.debug(f"🧠 正在插入向量到 Milvus collection: {collection_name} ...")
     all_docs = []
     for doc in doc_meta_list:
         # doc.setdefault("file_idx", -1)
@@ -227,15 +227,18 @@ def insert_block_to_milvus(doc_meta_list, embedder, collection_name, batch_size=
         try:
             milvus.add_documents(batch)
             inserted += len(batch)
-            print(f"✅ 插入 batch {i // batch_size + 1}: {len(batch)} 条")
+            logger.debug(f"✅ 插入 batch {i // batch_size + 1}: {len(batch)} 条")
         except Exception as e:
-            print(f"❌ 插入 batch 失败: {e}")
+            logger.error(f"❌ 插入 batch 失败: {e}")
+    
+    logger.debug(f"✅ 已插入 Milvus：{inserted} 条文档块")
+
     return inserted
 
 # ======================== 插入 ES ========================
 def insert_block_to_es(doc_meta_list, es_index_name) -> int:
     es = get_es()
-    print(f"📥 正在插入文档到 Elasticsearch 索引: {es_index_name} ...")
+    # logger.debug(f"📥 正在插入文档到 Elasticsearch 索引: {es_index_name} ...")
 
     actions = []
     for doc in doc_meta_list:
@@ -257,11 +260,13 @@ def insert_block_to_es(doc_meta_list, es_index_name) -> int:
 
     try:
         resp = helpers.bulk(es, actions)
-        print(f"✅ 已插入 ES：{resp[0]} 条文档块")
+        logger.debug(f"✅ 已插入 ES：{resp[0]} 条文档块")
         return resp[0]  # 成功数
     except Exception as e:
-        print(f"❌ ES 插入失败: {e}")
+        logger.error(f"❌ ES 插入失败: {e}")
         return 0
+
+
 
 # ======================== 删除 Milvus 中的文档块 ========================
 def delete_blocks_from_milvus(collection_name, file_idx) -> int:

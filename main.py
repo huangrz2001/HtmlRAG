@@ -17,8 +17,11 @@ from utils.db_utils import (
     delete_blocks_from_es, delete_blocks_from_milvus
 )
 from utils.llm_api import rewrite_query_vllm, rewrite_query_vllm_async
-from utils.config import CONFIG
-import aiofiles 
+from utils.config import CONFIG, logger
+import asyncio
+import aiofiles
+from functools import partial
+import time
 
 
 # ======================== 嵌入模型加载 ========================
@@ -39,49 +42,76 @@ def parse_time_tag(html: str):
 def get_local_html_path(page_url: str) -> str:
     return os.path.join("tmp", page_url)
 
-def download_html(resource_id: int, blackhole_url: str, page_url: str) -> str:
-    """从远程服务器下载 base64 HTML 内容并保存为本地文件"""
+async def async_remove(path: str):
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, partial(os.remove, path))
+
+
+def download_html(resource_id: int, blackhole_url: str, save_path: str) -> str:
+    """
+    从黑洞服务器下载 Base64 文件内容并保存到本地指定路径，并记录耗时
+    """
     url = f"http://{blackhole_url}/resource/withoutLogin/downloadWithBase64"
+    start_time = time.perf_counter()
+
     try:
         resp = requests.post(url, json={"resourceId": resource_id}, timeout=10)
         resp.raise_for_status()
-        data = resp.json()
-        content_bytes = base64.b64decode(data["content"])
-        local_path = get_local_html_path(page_url)
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        with open(local_path, "wb") as f:
+        resp_data = resp.json()
+
+        if resp_data.get("code") != 200000 or "data" not in resp_data:
+            raise ValueError(f"请求失败或响应无效: {resp_data}")
+
+        content_base64 = resp_data["data"].get("content")
+        if not content_base64:
+            raise ValueError(f"响应中缺少 content 字段: {resp_data}")
+
+        content_bytes = base64.b64decode(content_base64)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        with open(save_path, "wb") as f:
             f.write(content_bytes)
-        return local_path
+
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(f"✅ 黑洞下载成功: {resource_id} -> {save_path}，耗时 {elapsed_ms:.2f} ms")
+        return save_path
+
     except Exception as e:
-        print(f"❌ 下载失败: {e}")
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.error(f"❌ 黑洞下载失败: {resource_id} -> {save_path}，耗时 {elapsed_ms:.2f} ms，错误: {e}")
         return None
+
 
 
 # ========== 插入异步接口 ==========
 async def insert_html_api_async(document_index: int, page_url: str, resource_id: int, blackhole_url: str):
-    # ✅ 下载 HTML 文件（或使用本地缓存路径）
-    # html_path = download_html(resource_id, blackhole_url, page_url)
-    # html_path = "/home/algo/hrz/db_construct/测试知识库/_全球购_商家违规管理规则.html"
-    html_path = page_url
-    if not html_path or not os.path.exists(html_path):
-        return {"result": "fail", "error": "HTML 文件下载失败"}
+    logger.info(f"📥 插入请求: document_index={document_index}, page_url={page_url}, resource_id={resource_id}")
+
+    html_path = get_local_html_path(page_url)
+    if not os.path.exists(html_path):
+        logger.info(f"{html_path} 文件不存在，本地路径: %s，尝试从黑洞下载...", html_path)
+        downloaded_path = download_html(resource_id, blackhole_url, html_path)
+        if not downloaded_path or not os.path.exists(downloaded_path):
+            logger.error("❌ HTML 文件下载失败: %s", html_path)
+            return {"result": "fail", "error": "HTML 文件下载失败"}
 
     try:
-        # ✅ 异步读取 HTML 内容
         async with aiofiles.open(html_path, "r", encoding="utf-8") as f:
             html_raw = await f.read()
+        logger.info("%s HTML 文件读取完成", page_url)
 
-        # HTML 清洗 + 结构解析
         time_value, cleaned_part = parse_time_tag(html_raw)
         cleaned_html = clean_html(cleaned_part)
+        logger.info("%s HTML 清洗与时间标签提取完成", page_url)
+
         block_tree, _ = build_block_tree(
             cleaned_html,
             max_node_words=CONFIG["max_node_words_embed"],
             min_node_words=CONFIG["min_node_words_embed"],
             zh_char=(CONFIG["lang"] == "zh")
         )
+        logger.info("%s Block Tree 构建完成", page_url)
 
-        # ✅ 异步生成摘要块
         doc_meta = await generate_block_documents_async(
             block_tree=block_tree,
             max_node_words=CONFIG["max_node_words_embed"],
@@ -90,14 +120,16 @@ async def insert_html_api_async(document_index: int, page_url: str, resource_id:
             use_vllm=True,
             batch_size=CONFIG.get("vllm_batch_size", 32)
         )
+        logger.info("%s 文档块生成完成，chunk 数: %d", page_url, len(doc_meta))
 
         for i, doc in enumerate(doc_meta):
             doc["file_idx"] = document_index
             doc["chunk_idx"] = i
-
-        # ✅ 插入 Milvus 和 ES（同步）
+        logger.info("%s 开始插入 Milvus...", page_url)
         milvus_cnt = insert_block_to_milvus(doc_meta, embedder, CONFIG["index_name"])
+        logger.info("%s 开始插入 ES...", page_url)
         es_cnt = insert_block_to_es(doc_meta, CONFIG["index_name"])
+        logger.info("%s 向量插入完成: Milvus=%d, ES=%d", page_url, milvus_cnt, es_cnt)
 
         return {
             "result": "ok",
@@ -107,23 +139,25 @@ async def insert_html_api_async(document_index: int, page_url: str, resource_id:
         }
 
     except Exception as e:
+        logger.exception("%s 插入失败:", page_url)
         return {"result": "fail", "error": f"插入失败: {str(e)}"}
-
 
 # ======================== 删除接口实现 ========================
 async def delete_html_api_async(document_index: int, page_url: str):
+    logger.info(f"📤 删除请求: document_index={document_index}, page_url={page_url}")
     try:
-        # ✅ DB 删除操作仍为同步（推荐后续改造为异步驱动库）
         milvus_cnt = delete_blocks_from_milvus(CONFIG["index_name"], document_index)
         es_cnt = delete_blocks_from_es(CONFIG["index_name"], document_index)
+        logger.info(f"{page_url} 向量删除完成: Milvus=%d, ES=%d", milvus_cnt, es_cnt)
 
-        # ✅ 异步删除本地文件
         local_path = get_local_html_path(page_url)
         if os.path.exists(local_path):
+            logger.info(f"{page_url} 检测到本地文件，准备删除: {local_path}")
             try:
-                await aiofiles.os.remove(local_path)
+                await async_remove(local_path)
+                logger.info(f"{page_url} 本地文件删除成功: {local_path}")
             except Exception as e:
-                print(f"⚠️ 异步删除文件失败: {e}")
+                logger.warning(f"{page_url} 本地文件异步删除失败: {e}")
 
         return {
             "result": "ok",
@@ -133,8 +167,8 @@ async def delete_html_api_async(document_index: int, page_url: str):
         }
 
     except Exception as e:
-        return {"result": "fail", "error": f"删除失败: {e}"}
-
+        logger.exception("❌ 删除失败:")
+        return {"result": "fail", "error": f"删除失败: {str(e)}"}
 
 
 # ======================== FastAPI 定义 ========================
@@ -143,13 +177,13 @@ app = FastAPI(title="RAG 文档接口", description="支持文档插入、删除
 class InsertRequest(BaseModel):
     document_index: int
     resource_id: int  # long结构，文档资源id
-    blackhole_url: str  # ✅ 应为 str 类型
     page_url: str
 
 @app.post("/chat/python/document/add", summary="新增文档")
 async def add_doc(req: InsertRequest):
     print(f"📥 插入请求: {req.document_index}, {req.page_url}")
-    result = await insert_html_api_async(req.document_index, req.page_url, req.resource_id, req.blackhole_url)
+    # 4008893141271707648
+    result = await insert_html_api_async(req.document_index, req.page_url, req.resource_id, CONFIG.get("blackhole_url", "172.16.4.51:8082"))
     return JSONResponse(content=result)
 
 
@@ -159,7 +193,6 @@ class DeleteRequest(BaseModel):
 
 @app.post("/chat/python/document/delete", summary="删除文档")
 async def delete_doc_async(req: DeleteRequest):
-    print(f"📤 删除请求: {req.document_index}, {req.page_url}")
     result = await delete_html_api_async(req.document_index, req.page_url)
     return JSONResponse(content=result)
 
@@ -173,13 +206,14 @@ class RewriteRequest(BaseModel):
 
 @app.post("/chat/python/query/rewrite", summary="重写 Query")
 async def rewrite_query(req: RewriteRequest):
-    print(f"🔄 重写请求: {req}")
+    logger.info(f"重写请求: 原始query={req.final_query}")
     try:
         dialogue = [{"speaker": d.speaker, "text": d.text} for d in req.dialogue]
-        # 不阻塞当前线程，而是等待 rewrite_query_vllm_async 执行完毕，再继续
         rewritten = await rewrite_query_vllm_async(dialogue, req.final_query)
+        logger.info(f"{req.final_query} 重写完成: {rewritten}")
         return {"status": "ok", "rewritten_query": rewritten}
     except Exception as e:
+        logger.exception("{req.final_query} 重写失败:")
         return {"status": "fail", "error": f"重写失败: {str(e)}"}
 
 

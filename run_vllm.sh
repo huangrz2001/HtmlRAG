@@ -7,7 +7,7 @@ MEM_UTIL=0.7        # 显存使用率
 MAX_LEN=4096
 TP_SIZE=2
 SWAP_SPACE=4
-MAX_SEQS=64
+MAX_SEQS=48
 BATCHED_TOKENS=8192
 
 # # ========== 启动 Yi-1.5-9B-Chat ==========

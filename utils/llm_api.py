@@ -48,7 +48,7 @@ import torch
 import requests
 import time
 import asyncio
-from utils.config import CONFIG, get_aiohttp_session, close_aiohttp_session, sem
+from utils.config import CONFIG, get_aiohttp_session, close_aiohttp_session, sem, logger
 import aiohttp
 
 
@@ -420,18 +420,19 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
         async with sem:
             session = await get_aiohttp_session()
             start = time.time()
+            logger.debug(f"vLLM 异步重写请求: {final_query}")
             async with session.post(api_url, json=payload) as resp:
                 resp.raise_for_status()
                 result = await resp.json()
-                content = result["choices"][0]["message"]["content"].strip()
-                print(f"✅ 重写成功（耗时 {time.time() - start:.2f}s）")
-                return content or fallback_rewrite
+                rewritten = result["choices"][0]["message"]["content"].strip()
+                logger.debug(f"{final_query} Query 重写成功，耗时 {time.time() - start:.2f}s, 重写结果: {rewritten }")
+                return rewritten or fallback_rewrite
     except Exception as e:
-        print(f"⚠️ vLLM 异步重写失败: {e}")
+        logger.error(f"⚠️ vLLM 异步重写失败: {e}, 返回原问题")
         return fallback_rewrite
 
 
-async def generate_summary_vllm_async(text, page_url, model="glm", max_new_tokens=150):
+async def generate_summary_vllm_async(text, page_url, model="glm", max_new_tokens=196):
     """
     使用 vLLM 异步接口生成摘要，带全局 session 和并发控制
     """
@@ -459,10 +460,15 @@ async def generate_summary_vllm_async(text, page_url, model="glm", max_new_token
     try:
         async with sem:
             session = await get_aiohttp_session()
+            start = time.time()
+            logger.debug(f" vLLM 异步摘要请求: {page_url + ' ' + text[:64]}")
             async with session.post(api_url, json=payload) as resp:
                 resp.raise_for_status()
                 result = await resp.json()
-                return result["choices"][0]["message"]["content"].strip()
+                summary = result["choices"][0]["message"]["content"].strip()
+                duration = time.time() - start
+                logger.debug(f"✅ vLLM 异步摘要成功 (耗时 {duration:.2f}s), {page_url + ' ' + text[:64]}, 摘要内容: {summary[:64]}...")
+                return summary
     except Exception as e:
-        print(f"⚠️ vLLM 异步摘要失败: {e}，返回截断文本")
+        logger.error(f"⚠️ vLLM 异步摘要失败: {e}，返回截断文本")
         return text[:max_new_tokens]
