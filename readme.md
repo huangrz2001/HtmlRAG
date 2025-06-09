@@ -172,5 +172,104 @@ uvicorn main:app --host 0.0.0.0 --port 8080 --reload    # 启动API
 | `fastapi` + `uvicorn` | 提供统一插入 / 检索 API 服务 |
 | `vllm`                | 提供本地模型的加速推理服务 |
 
+---
+
+## 🚀 部署与运行细节
+
+本系统由两个主要服务组成：
+
+* 📌 **vLLM 模型推理服务**：用于摘要生成 / 问题生成 / query 重写
+* 📌 **FastAPI 接口服务**：用于文档插入、检索与交互调用
+
+---
+
+### 🧩 1. 启动 vLLM 服务
+
+首先运行以下命令启动本地大模型服务（建议部署 ChatGLM 或 Yi 模型）：
+
+```bash
+bash run_vllm.sh
+```
+
+> 🔧 模型及推理参数配置请参考 `config.json` 中的：
+>
+> ```json
+> {
+>   "llm_model": "THUDM/glm-4-9b-chat",
+>   "llm_endpoint": "http://localhost:8000/v1/chat/completions"
+> }
+> ```
+
+---
+
+### 🖥️ 2. 启动 FastAPI 接口服务
+
+确保依赖环境正确后，通过 `uvicorn` 启动主接口服务：
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+此时可通过浏览器访问：
+
+* Swagger API 文档：`http://localhost:8080/docs`
+
+---
+
+### 🌐 3. Nginx 反向代理配置（支持多模块统一服务融合）
+
+为了将不同端口的多个子服务（如：文档管理、QA 问答、RAG 检索）整合至同一 80 端口下，可使用以下 Nginx 配置：
+
+```nginx
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    server_name _;
+
+    # 🔹 document 服务代理（端口 8080）
+    location /document/ {
+        proxy_pass http://127.0.0.1:8080/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # 🔹 qa 服务代理（端口 8012）
+    location /qa/ {
+        proxy_pass http://127.0.0.1:8012/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # 🔹 RAG 服务代理（端口 8086）
+    location /rag/ {
+        proxy_pass http://127.0.0.1:8086/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+    # ✅ 可选：开启跨域支持
+    add_header Access-Control-Allow-Origin *;
+    add_header Access-Control-Allow-Headers *;
+    add_header Access-Control-Allow-Methods *;
+}
+```
+> ⚠️ 确保对应 FastAPI 实例设置了 `root_path`（如 `FastAPI(root_path="/document")`）。
+
+此时可以通过统一的80端口访问docs目录:  
+http://localhost:80/document/docs  
+http://localhost:80/rag/docs  
+http://localhost:80/qa/docs
 
 ---

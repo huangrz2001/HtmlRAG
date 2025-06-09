@@ -41,6 +41,19 @@ from bs4 import BeautifulSoup, Comment, Tag
 import copy
 
 
+
+
+# ======================== 提取 <time> 标签辅助函数 ========================
+def parse_time_tag(html: str):
+    time_pattern = r"^\s*<time[^>]*?>(.*?)</time>"
+    time_match = re.match(time_pattern, html, flags=re.IGNORECASE | re.DOTALL)
+    time_value = ""
+    if time_match:
+        time_value = time_match.group(1).strip()
+        html = html[time_match.end():].lstrip()
+    return time_value, html
+
+
 # ===================== HTML 清洗核心 =====================
 def simplify_html_keep_table(soup, keep_attr=False):
     """保留表格结构的 HTML 简化版本"""

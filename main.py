@@ -178,14 +178,14 @@ async def delete_html_api_async(document_index: int, page_url: str):
 
 
 # ======================== FastAPI 定义 ========================
-app = FastAPI(title="RAG 文档接口", description="支持文档插入、删除、query 重写")
+app = FastAPI(title="RAG 文档接口", description="支持文档插入、删除、query 重写", root_path="/document")
 
 class InsertRequest(BaseModel):
     document_index: int
     resource_id: int  # long结构，文档资源id
     page_url: str
 
-@app.post("/chat/python/document/add", summary="新增文档")
+@app.post("/add", summary="新增文档")
 async def add_doc(req: InsertRequest):
     print(f"📥 插入请求: {req.document_index}, {req.page_url}")
     # 4008893141271707648
@@ -197,7 +197,7 @@ class DeleteRequest(BaseModel):
     document_index: int
     page_url: str
 
-@app.post("/chat/python/document/delete", summary="删除文档")
+@app.post("/delete", summary="删除文档")
 async def delete_doc_async(req: DeleteRequest):
     result = await delete_html_api_async(req.document_index, req.page_url)
     return JSONResponse(content=result)
@@ -210,7 +210,7 @@ class RewriteRequest(BaseModel):
     dialogue: List[DialogueTurn]
     final_query: str
 
-@app.post("/chat/python/query/rewrite", summary="重写 Query")
+@app.post("/query_rewrite", summary="重写 Query")
 async def rewrite_query(req: RewriteRequest):
     logger.info(f"重写请求: 原始query={req.final_query}")
     try:
