@@ -19,24 +19,39 @@
 
 ```json
 {
-  "question": "xxx问题",
+  "question": "如何优化广告投放效果？",
   "limit": 16
 }
 ```
 #### ✅ 返回值（成功）
 ```json
 {
-  "result": "ok",
-  "xxx": "xxx",
-  "xxx": "xxx"
+  "status": "success",
+  "results": [
+    {
+      "text":"方向  问题点  怎么做？...",
+      "page_url":"总知识库_cleaned/巨量本地推帮助中心/功能介绍/巨量本地推直播全域推广产品手册.html",
+      "page_name":"巨量本地推直播全域推广产品手册",
+      "chunk_idx":6,
+      "title":"五、怎么投放效果好？​ 表格行1-7",
+      "summary":"进行全域推广时，...",
+      "time":"2025-04-23 17:58:33"
+    }
+  ],
+  "reference_contents": [
+    "[内容1]:...",
+    "[内容1]:...",
+    ...
+  ],
+  "processing_time": 1.4188416004180908
 }
 ```
 #### ❌ 返回值（失败）
 
 ```json
 {
-  "result": "fail",
-  "xxx": "xxx",
+  "status": "failed",
+  "processing_time": 0.4188416004180908
 }
 ```
 
@@ -58,24 +73,25 @@
 
 ```json
 {
-  "qa_index": 0,
-  "question": "xxx问题"
+  "qa_index": 10086,
+  "question": "如何优化广告投放效果？"
 }
 ```
 #### ✅ 返回值（成功）
 ```json
 {
-  "result": "ok",
-  "xxx": "xxx",
-  "xxx": "xxx"
+  "status": "inserted",
+  "qa_index": 10086,
+  "question": "如何优化广告投放效果？"
 }
 ```
 #### ❌ 返回值（失败）
 
 ```json
 {
-  "result": "fail",
-  "xxx": "xxx",
+  "status": "failed",
+  "qa_index": 10086,
+  "qa_index": "如何优化广告投放效果？"
 }
 ```
 ---
@@ -90,24 +106,32 @@
 
 ```json
 {
-  "question": "xxx问题",
+  "question": "如何优化广告投放效果？",
   "top_k": 5
 }
 ```
 #### ✅ 返回值（成功）
 ```json
 {
-  "result": "ok",
-  "xxx": "xxx",
-  "xxx": "xxx"
+  [
+    {
+      "qa_index": 10086,
+      "question": "如何优化广告投放效果？",
+      "distance": 0.987527362731,
+    },
+
+    {
+      ...
+    },
+    ...
+  ]
 }
 ```
 #### ❌ 返回值（失败）
 
 ```json
 {
-  "result": "fail",
-  "xxx": "xxx",
+  "status": "failed"
 }
 ```
 ---
@@ -122,23 +146,24 @@
 
 ```json
 {
-  "qa_index": 0
+  "qa_index": 10086
 }
 ```
 #### ✅ 返回值（成功）
 ```json
 {
-  "result": "ok",
-  "xxx": "xxx",
-  "xxx": "xxx"
+  "status": "deleted",
+  "qa_index": 10086,
+  "delete_count": 1
 }
 ```
 #### ❌ 返回值（失败）
 
 ```json
 {
-  "result": "fail",
-  "xxx": "xxx",
+  "status": "failed",
+  "qa_index": 10086,
+  "error": "..."
 }
 ```
 
