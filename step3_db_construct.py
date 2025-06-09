@@ -56,13 +56,20 @@ if __name__ == "__main__":
     json_files = get_all_json_files(block_dir)
     print(f"📁 共发现 {len(json_files)} 个 JSON 文件待构建索引")
 
+    cnt4Milvus = 0
+    cnt4ES = 0
     for json_path in json_files:
         print(f"\n📄 文档块文件: {json_path}")
         with open(json_path, "r", encoding="utf-8") as f:
             doc_meta_list = json.load(f)
+        if not len(doc_meta_list):
+            print(f"⚠️ {json_path} 中没有有效的文档块，跳过")
+            continue
+
         # print(doc_meta_list)
-        cnt4Milvus = insert_block_to_milvus(doc_meta_list, embedder, args.index_name)
-        cnt4ES = insert_block_to_es(doc_meta_list, args.index_name)
+        cnt4Milvus += insert_block_to_milvus(doc_meta_list, embedder, args.index_name)
+        cnt4ES += insert_block_to_es(doc_meta_list, args.index_name)
 
 
-    print(f"\n✅ 所有文档块构建完成，总计插入 {cnt4Milvus} 条文档块")
+
+    print(f"\n✅ 所有文档块构建完成，Milvus总计插入 {cnt4Milvus} 条文档块，ES总计插入 {cnt4ES} 条文档块")

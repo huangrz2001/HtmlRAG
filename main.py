@@ -40,7 +40,10 @@ def parse_time_tag(html: str):
 
 # ========== 辅助函数 ==========
 def get_local_html_path(page_url: str) -> str:
-    return os.path.join("tmp", page_url)
+    """
+    在当前项目目录下构造缓存文件的路径，目录为 ./archive/
+    """
+    return os.path.join(os.path.dirname(__file__), "archive", page_url)
 
 async def async_remove(path: str):
     loop = asyncio.get_running_loop()
@@ -121,9 +124,12 @@ async def insert_html_api_async(document_index: int, page_url: str, resource_id:
             batch_size=CONFIG.get("vllm_batch_size", 32)
         )
         logger.info("%s 文档块生成完成，chunk 数: %d", page_url, len(doc_meta))
+        if len(doc_meta) == 0:
+            logger.warning("%s 生成的文档块为空，请检查 HTML 内容", page_url)
+            return {"result": "fail", "error": "原文档为空，无法插入"}
 
         for i, doc in enumerate(doc_meta):
-            doc["file_idx"] = document_index
+            doc["document_index"] = document_index
             doc["chunk_idx"] = i
         logger.info("%s 开始插入 Milvus...", page_url)
         milvus_cnt = insert_block_to_milvus(doc_meta, embedder, CONFIG["index_name"])
@@ -133,7 +139,7 @@ async def insert_html_api_async(document_index: int, page_url: str, resource_id:
 
         return {
             "result": "ok",
-            "file_idx": document_index,
+            "document_index": document_index,
             "inserted_chunks_milvus": milvus_cnt,
             "inserted_chunks_es": es_cnt
         }
@@ -161,7 +167,7 @@ async def delete_html_api_async(document_index: int, page_url: str):
 
         return {
             "result": "ok",
-            "file_idx": document_index,
+            "document_index": document_index,
             "deleted_chunks_milvus": milvus_cnt,
             "deleted_chunks_es": es_cnt
         }

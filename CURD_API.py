@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 API服务模块：统一封装 HTML 的清洗、分块与插入/删除操作
-支持外部配置文件 + 前端传入 file_idx 参数
+支持外部配置文件 + 前端传入 document_index 参数
 """
 
 import os
@@ -11,7 +11,7 @@ import torch
 from time import sleep
 from transformers import AutoTokenizer, AutoModel
 from langchain_huggingface import HuggingFaceEmbeddings
-from utils.html_utils import clean_html, build_block_tree
+from utils.html_utils import clean_html, build_block_tree, parse_time_tag
 from utils.text_process_utils import generate_block_documents
 from utils.db_utils import (
     insert_block_to_es, insert_block_to_milvus,
@@ -33,18 +33,8 @@ embedder = HuggingFaceEmbeddings(
     model_kwargs={"device": DEVICE}
 )
 
-# ======================== 提取 <time> 标签辅助函数 ========================
-def parse_time_tag(html: str):
-    time_pattern = r"^\s*<time[^>]*?>(.*?)</time>"
-    time_match = re.match(time_pattern, html, flags=re.IGNORECASE | re.DOTALL)
-    time_value = ""
-    if time_match:
-        time_value = time_match.group(1).strip()
-        html = html[time_match.end():].lstrip()
-    return time_value, html
-
-# ======================== 插入接口（传入 file_idx） ========================
-def insert_html_api(html_path: str, file_idx: int):
+# ======================== 插入接口（传入 document_index） ========================
+def insert_html_api(html_path: str, document_index: int):
     if not os.path.exists(html_path):
         return {"status": "fail", "msg": f"HTML 文件不存在: {html_path}"}
 
@@ -77,9 +67,9 @@ def insert_html_api(html_path: str, file_idx: int):
             use_vllm=True
         )
 
-        # Step 5: 添加 file_idx 字段
+        # Step 5: 添加 document_index 字段
         for i, doc in enumerate(doc_meta):
-            doc["file_idx"] = file_idx
+            doc["document_index"] = document_index
             doc["chunk_idx"] = i  # 每个文件内部 chunk 编号
 
         # Step 6: 插入 Milvus / ES
@@ -95,7 +85,7 @@ def insert_html_api(html_path: str, file_idx: int):
         return {
             "status": "ok",
             "inserted": len(doc_meta),
-            "file_idx": file_idx
+            "document_index": document_index
         }
 
     except Exception as e:
@@ -104,8 +94,8 @@ def insert_html_api(html_path: str, file_idx: int):
             "error": f"插入失败：{str(e)}"
         }
 
-# ======================== 删除接口（传入 file_idx） ========================
-def delete_html_api(file_idx: int, html_path: str = None):
+# ======================== 删除接口（传入 document_index） ========================
+def delete_html_api(document_index: int, html_path: str = None):
     try:
         if html_path:
             for suffix in ["_clean.html", "_block.json"]:
@@ -113,12 +103,12 @@ def delete_html_api(file_idx: int, html_path: str = None):
                 if os.path.exists(fpath):
                     os.remove(fpath)
 
-        delete_blocks_from_milvus(CONFIG["index_name"], file_idx)
-        delete_blocks_from_es(CONFIG["index_name"], file_idx)
+        delete_blocks_from_milvus(CONFIG["index_name"], document_index)
+        delete_blocks_from_es(CONFIG["index_name"], document_index)
 
         return {
             "status": "ok",
-            "file_idx": file_idx
+            "document_index": document_index
         }
 
     except Exception as e:

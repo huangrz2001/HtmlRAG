@@ -10,13 +10,13 @@ HTML 文档索引与多模态检索核心模块
 1. 向量库（Milvus）管理：
    - `reset_milvus`: 重建 Milvus collection，支持主键自增与多字段结构。
    - `insert_block_to_milvus`: 向量块插入，支持批量写入与嵌入生成。
-   - `delete_blocks_from_milvus`: 按 file_idx 删除 Milvus 向量。
+   - `delete_blocks_from_milvus`: 按 document_index 删除 Milvus 向量。
    - `query_milvus_blocks`: 基于语义向量进行 ANN 检索，支持 reranker 精排。
 
 2. 关键词库（Elasticsearch）管理：
    - `reset_es`: 重建 Elasticsearch 索引结构，使用 IK 分词器进行中文优化。
    - `insert_block_to_es`: 批量插入文档块文本至 Elasticsearch。
-   - `delete_blocks_from_es`: 按 file_idx 删除 ES 文档块。
+   - `delete_blocks_from_es`: 按 document_index 删除 ES 文档块。
    - `query_es_blocks`: 基于关键词抽取构建查询语句，执行倒排检索。
 
 3. 多源融合检索与去重：
@@ -107,7 +107,7 @@ def get_max_global_idx_milvus(host, collection_name):
 
 # ======================== ES 索引重建 ========================
 def reset_es(index_name=index_name):
-    """重建 Elasticsearch 索引，使用 IK 分词器，去除 global_chunk_idx，增加 file_idx"""
+    """重建 Elasticsearch 索引，使用 IK 分词器，去除 global_chunk_idx，增加 document_index"""
     es = get_es()
     print("Connected to ElasticSearch!" if es.ping() else "Connection failed.")
 
@@ -130,7 +130,7 @@ def reset_es(index_name=index_name):
             },
             "mappings": {
                 "properties": {
-                    "file_idx": { "type": "long" },
+                    "document_index": { "type": "long" },
                     "chunk_idx": { "type": "integer" },
                     "text": {
                         "type": "text",
@@ -169,11 +169,11 @@ def reset_es(index_name=index_name):
             }
         },
     )
-    print(f"✅ ES 索引 '{index_name}' 已成功创建（含 file_idx）")
+    print(f"✅ ES 索引 '{index_name}' 已成功创建（含 document_index）")
 
 # ======================== Milvus 向量库重建 ========================
 def reset_milvus(collection_name=index_name, dim=768):
-    """重建 Milvus 向量集合，含主键自增和 file_idx 字段"""
+    """重建 Milvus 向量集合，含主键自增和 document_index 字段"""
     # ⚠️ 注意：连接初始化已在 connections.py 执行
     if utility.has_collection(collection_name):
         print(f"⚠️ Milvus 集合 '{collection_name}' 已存在，正在删除...")
@@ -182,7 +182,7 @@ def reset_milvus(collection_name=index_name, dim=768):
     print(f"🚀 正在创建 Milvus collection: {collection_name}")
     fields = [
         FieldSchema(name="global_chunk_idx", dtype=DataType.INT64, is_primary=True, auto_id=True),
-        FieldSchema(name="file_idx", dtype=DataType.INT64),
+        FieldSchema(name="document_index", dtype=DataType.INT64),
         FieldSchema(name="chunk_idx", dtype=DataType.INT64),
         FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dim),
         FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=20000),
@@ -195,14 +195,14 @@ def reset_milvus(collection_name=index_name, dim=768):
     ]
     schema = CollectionSchema(fields=fields, description="HTML块向量索引")
     Collection(name=collection_name, schema=schema)
-    print(f"✅ Milvus collection '{collection_name}' 已创建（含主键自增 + file_idx）")
+    print(f"✅ Milvus collection '{collection_name}' 已创建（含主键自增 + document_index）")
 
 # ======================== 插入 Milvus ========================
 def insert_block_to_milvus(doc_meta_list, embedder, collection_name, batch_size=100) -> int:
     # logger.debug(f"🧠 正在插入向量到 Milvus collection: {collection_name} ...")
     all_docs = []
     for doc in doc_meta_list:
-        # doc.setdefault("file_idx", -1)
+        doc.setdefault("document_index", -1)
         node = Document(
             page_content=doc["text"],
             metadata={k: v for k, v in doc.items() if k != "text"}
@@ -242,11 +242,11 @@ def insert_block_to_es(doc_meta_list, es_index_name) -> int:
 
     actions = []
     for doc in doc_meta_list:
-        doc.setdefault("file_idx", -1)
+        doc.setdefault("document_index", -1)
         actions.append({
             "_index": es_index_name,
             "_source": {
-                "file_idx": doc["file_idx"],
+                "document_index": doc["document_index"],
                 "chunk_idx": doc["chunk_idx"],
                 "title": doc["title"],
                 "summary": doc.get("summary", ""),
@@ -269,33 +269,33 @@ def insert_block_to_es(doc_meta_list, es_index_name) -> int:
 
 
 # ======================== 删除 Milvus 中的文档块 ========================
-def delete_blocks_from_milvus(collection_name, file_idx) -> int:
+def delete_blocks_from_milvus(collection_name, document_index) -> int:
     try:
         col = get_milvus_collection(collection_name)
-        expr = f"file_idx == {file_idx}"
+        expr = f"document_index == {document_index}"
         count = col.num_entities  # 删除前实体总数（可能非严格对应）
         result = col.delete(expr)
-        print(f"🗑️ Milvus: 已删除 file_idx = {file_idx} 的文档块")
+        print(f"🗑️ Milvus: 已删除 document_index = {document_index} 的文档块")
         return result.delete_count if hasattr(result, "delete_count") else 0
     except Exception as e:
         print(f"❌ Milvus 删除失败: {e}")
         return 0
 
 # ======================== 删除 ES 中的文档块 ========================
-def delete_blocks_from_es(index_name, file_idx) -> int:
+def delete_blocks_from_es(index_name, document_index) -> int:
     try:
         es = get_es()
         query = {
             "query": {
                 "term": {
-                    "file_idx": file_idx
+                    "document_index": document_index
                 }
             }
         }
 
         hits = es.search(index=index_name, body=query, size=10000)["hits"]["hits"]
         if not hits:
-            print(f"📭 ES: 未找到 file_idx = {file_idx} 的文档")
+            print(f"📭 ES: 未找到 document_index = {document_index} 的文档")
             return 0
 
         resp = helpers.bulk(
@@ -305,7 +305,7 @@ def delete_blocks_from_es(index_name, file_idx) -> int:
                 for hit in hits
             ]
         )
-        print(f"🗑️ ES: 已删除 file_idx = {file_idx} 的文档块，共 {resp[0]} 条")
+        print(f"🗑️ ES: 已删除 document_index = {document_index} 的文档块，共 {resp[0]} 条")
         return resp[0]
     except Exception as e:
         print(f"❌ ES 删除失败: {e}")
@@ -347,7 +347,7 @@ def query_milvus_blocks(
         anns_field="vector",
         param={"metric_type": "COSINE", "params": {"nprobe": 100}},
         limit=top_k,
-        output_fields=["text", "page_url", "chunk_idx", "page_name", "title", "summary", "time", "question", 'file_idx'],
+        output_fields=["text", "page_url", "chunk_idx", "page_name", "title", "summary", "time", "question", 'document_index'],
     )
     # print(results)
 
@@ -401,7 +401,7 @@ def query_es_blocks(
 
     es_rank = [
         {
-            "file_idx": hit["_source"].get("file_idx", -1),
+            "document_index": hit["_source"].get("document_index", -1),
             "chunk_idx": hit["_source"].get("chunk_idx", -1),
             "page_url": hit["_source"].get("page_url", "unknown"),
             "page_name": hit["_source"].get("page_name", "none"),
@@ -462,7 +462,7 @@ def query_blocks(
     print("📦 返回的文档块示例:")
     for i, doc in enumerate(final_blocks[:5]):
         # print(doc)
-        print(f"  [#{i+1}] file_idx={doc.get('file_idx',-1)}  page_url={doc['page_url']:<30} chunk_idx={doc['chunk_idx']:<4} title={doc['title'][:30]:<30}")
+        print(f"  [#{i+1}] document_index={doc.get('document_index',-1)}  page_url={doc['page_url']:<30} chunk_idx={doc['chunk_idx']:<4} title={doc['title'][:30]:<30}")
     return final_blocks
 
 
