@@ -25,7 +25,7 @@ from utils.llm_api import rewrite_query_vllm_async
 from utils.config import CONFIG, logger
 
 # ======================== 嵌入模型加载 ========================
-DEVICE = CONFIG.get("device", f"cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = CONFIG.get("device", f"cuda:1" if torch.cuda.is_available() else "cpu")
 
 embedder = HuggingFaceEmbeddings(
     model_name=CONFIG["embed_model"],

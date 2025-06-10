@@ -1,6 +1,6 @@
 {
   "lang": "zh",
-  "embed_model": "/data/huangruizhi/htmlRAG/bce-embedding-base_v1",
+  "embed_model": "/home/algo/AD_agent/models/bce-embedding-base_v1",
   "summary_model": "THUDM/glm-4-9b-chat",
   "summary_tokenizer": "THUDM/glm-4-9b-chat",
   "device": "cuda:0",
@@ -17,26 +17,26 @@
     "dev": {
       "milvus_host": "192.168.7.247",
       "es_host": "192.168.7.247",
-      "index_name": "curd_env",
-      "collection_name": "curd_env"
+      "index_name": "dev_cs_kb",
+      "collection_name": "dev_cs_kb"
     },
     "test": {
       "milvus_host": "192.168.7.247",
       "es_host": "192.168.7.247",
-      "index_name": "curd_env",
-      "collection_name": "curd_env"
+      "index_name": "test_cs_kb",
+      "collection_name": "test_cs_kb"
     },
     "uat": {
-      "milvus_host": "192.168.7.247",
-      "es_host": "192.168.7.247",
-      "index_name": "curd_env",
-      "collection_name": "curd_env"
+      "milvus_host": "192.168.19.228",
+      "es_host": "192.168.19.228",
+      "index_name": "cs_kb",
+      "collection_name": "cs_kb"
     },
     "prod": {
       "milvus_host": "192.168.7.247",
       "es_host": "192.168.7.247",
-      "index_name": "curd_env",
-      "collection_name": "curd_env"
+      "index_name": "cs_kb",
+      "collection_name": "cs_kb"
     }
   }
 }

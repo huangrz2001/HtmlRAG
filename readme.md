@@ -219,7 +219,7 @@ uvicorn main:app --host 0.0.0.0 --port 8080
 ### 🌐 3. Nginx 反向代理配置（支持多模块统一服务融合）
 
 为了将不同端口的多个子服务（如：文档管理、QA 问答、RAG 检索）整合至同一 80 端口下，可使用以下 Nginx 配置：
-
+nginx/sites-enabled/default（whereis nginx，然后找到sbin/nginx重启）
 ```nginx
 server {
     listen 80 default_server;

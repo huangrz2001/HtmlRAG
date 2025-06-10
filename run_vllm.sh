@@ -3,14 +3,14 @@
 # ========== 配置参数 ==========
 GPU_IDS="0,1"
 PORT=8011
-MEM_UTIL=0.7        # 显存使用率
+MEM_UTIL=0.6        # 显存使用率
 MAX_LEN=4096
 TP_SIZE=2
 SWAP_SPACE=4
-MAX_SEQS=48
+MAX_SEQS=24
 BATCHED_TOKENS=8192
 
-# # ========== 启动 Yi-1.5-9B-Chat ==========
+# ========== 启动 Yi-1.5-9B-Chat ==========
 # CUDA_VISIBLE_DEVICES=$GPU_IDS python3 -m vllm.entrypoints.openai.api_server \
 #   --model /home/algo/.cache/modelscope/hub/models/01ai/Yi-1.5-9B-Chat \
 #   --tokenizer /home/algo/.cache/modelscope/hub/models/01ai/Yi-1.5-9B-Chat \

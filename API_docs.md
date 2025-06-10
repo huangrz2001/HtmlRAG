@@ -2,11 +2,18 @@
 ---
 
 ## 🔎 RAG 检索服务接口文档
-
+开发环境：  
 > 🌐 **Base URL**：`http://192.168.7.179:80`  
-> 🌐 **RAG docs**：`http://localhost:80/rag/docs`  
-> 🌐 **问答对CURD docs**：`http://localhost:80/qa/docs`  
-> 🌐 **文档CURD及query重写 docs**：`http://localhost:80/document/docs`
+> 🌐 **RAG docs**：`http://192.168.7.179:80/rag/docs`  
+> 🌐 **问答对CURD docs**：`http://192.168.7.179:80/qa/docs`  
+> 🌐 **文档CURD及query重写 docs**：`http://192.168.7.179:80/document/docs`
+
+测试环境：  
+> 🌐 **Base URL**：`http://192.168.7.247:8090`  
+> 🌐 **RAG docs**：`http://192.168.7.247:8090/rag/docs`  
+> 🌐 **问答对CURD docs**：`http://192.168.7.247:8090/qa/docs`  
+> 🌐 **文档CURD及query重写 docs**：`http://192.168.7.247:8090/document/docs`
+
 ---
 
 ### 📡 `/query` - 查询参考内容
@@ -189,8 +196,8 @@
 
 ```json
 {
-  "document_index": 4008893141271707648,
-  "resource_id": 4008893141271707648,
+  "document_index": "4008893141271707648",
+  "resource_id": "4008893141271707648",
   "page_url": "分类一/_全球购_发布违禁商品_信息_细则.html",
   "env": "dev"
 
@@ -228,7 +235,7 @@
 
 ```json
 {
-  "document_index": 4008893141271707648,
+  "document_index": "4008893141271707648",
   "page_url": "分类一/_全球购_发布违禁商品_信息_细则.html",
   "env": "dev"
 }
