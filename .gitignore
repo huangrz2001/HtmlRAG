@@ -5,15 +5,3 @@
 models/bce-*
 models/bge-*
 
-# 总知识库/*
-# 总知识库_clean/*
-/finetune/checkpoints
-/finetune/trained_reranker_bce_4090
-/finetune/wandb
-/finetune/trained_reranker_single
-finetune/trained_reranker_single/
-finetune/wandb/
-/知识库
-/知识库_cleaned
-/source_pages-main
-/logs
