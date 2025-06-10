@@ -1,10 +1,6 @@
-# 总知识库/*
-# 总知识库_clean/*
-/finetune/checkpoints
-/finetune/trained_reranker_bce_4090
-/finetune/wandb
-/finetune/trained_reranker_single
-/知识库
-/知识库_cleaned
-/source_pages-main
-/logs
+# Python编译缓存
+**/__pycache__/
+
+# 大型模型文件
+models/bce-*
+models/bge-*

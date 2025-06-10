@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 API服务模块：统一封装 HTML 的清洗、分块与插入/删除操作
-支持外部配置文件 + 前端传入 document_index 参数
+支持多环境配置 + 前端传入 document_index 参数
 """
 
 import os
@@ -18,6 +18,8 @@ from utils.db_utils import (
     delete_blocks_from_es, delete_blocks_from_milvus
 )
 
+
+
 # ======================== 加载配置 ========================
 def load_config(path="config.json"):
     with open(path, "r", encoding="utf-8") as f:
@@ -33,8 +35,8 @@ embedder = HuggingFaceEmbeddings(
     model_kwargs={"device": DEVICE}
 )
 
-# ======================== 插入接口（传入 document_index） ========================
-def insert_html_api(html_path: str, document_index: int):
+# ======================== 插入接口 ========================
+def insert_html_api(html_path: str, document_index: int, env: str = "dev"):
     if not os.path.exists(html_path):
         return {"status": "fail", "msg": f"HTML 文件不存在: {html_path}"}
 
@@ -67,52 +69,51 @@ def insert_html_api(html_path: str, document_index: int):
             use_vllm=True
         )
 
-        # Step 5: 添加 document_index 字段
+        # Step 5: 添加字段
         for i, doc in enumerate(doc_meta):
             doc["document_index"] = document_index
-            doc["chunk_idx"] = i  # 每个文件内部 chunk 编号
+            doc["chunk_idx"] = i
 
         # Step 6: 插入 Milvus / ES
-        insert_block_to_milvus(doc_meta, embedder, CONFIG["index_name"])
-        insert_block_to_es(doc_meta, CONFIG["index_name"])
-
-        # # Step 7: 写入中间文件（可选）
-        # with open(html_path.replace(".html", "_clean.html"), "w", encoding="utf-8") as f:
-        #     f.write(cleaned_html)
-        # with open(html_path.replace(".html", "_block.json"), "w", encoding="utf-8") as f:
-        #     json.dump(doc_meta, f, ensure_ascii=False, indent=2)
+        inserted_milvus = insert_block_to_milvus(doc_meta, embedder, env=env)
+        inserted_es = insert_block_to_es(doc_meta, env=env)
 
         return {
             "status": "ok",
             "inserted": len(doc_meta),
+            "inserted_chunks_milvus": inserted_milvus,
+            "inserted_chunks_es": inserted_es,
             "document_index": document_index
         }
 
     except Exception as e:
         return {
             "status": "fail",
-            "error": f"插入失败：{str(e)}"
+            "error": f"[{env}] 插入失败：{str(e)}"
         }
 
-# ======================== 删除接口（传入 document_index） ========================
-def delete_html_api(document_index: int, html_path: str = None):
+# ======================== 删除接口 ========================
+def delete_html_api(document_index: int, html_path: str = None, env: str = "dev"):
     try:
+        # 删除中间缓存文件
         if html_path:
             for suffix in ["_clean.html", "_block.json"]:
                 fpath = html_path.replace(".html", suffix)
                 if os.path.exists(fpath):
                     os.remove(fpath)
 
-        delete_blocks_from_milvus(CONFIG["index_name"], document_index)
-        delete_blocks_from_es(CONFIG["index_name"], document_index)
+        deleted_milvus = delete_blocks_from_milvus(document_index, env=env)
+        deleted_es = delete_blocks_from_es(document_index, env=env)
 
         return {
             "status": "ok",
+            "deleted_chunks_milvus": deleted_milvus,
+            "deleted_chunks_es": deleted_es,
             "document_index": document_index
         }
 
     except Exception as e:
         return {
             "status": "fail",
-            "error": f"删除失败：{str(e)}"
+            "error": f"[{env}] 删除失败：{str(e)}"
         }

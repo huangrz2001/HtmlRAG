@@ -63,41 +63,74 @@ from utils.config import CONFIG, logger
 # 加载自定义词典（适用于电商/运营场景）
 jieba.load_userdict("./user_dict.txt")
 
+# 全局连接池
+_es_clients = {}
+_milvus_alias_map = {}
 
-index_name = CONFIG.get("index_name", "curd_env")
-Milvus_host = CONFIG.get('milvus_host', "192.168.7.247")
-ES_host = CONFIG.get('es_host', "192.168.7.247")
+def get_env_config(env=None):
+    """获取指定环境下的完整配置项"""
+    env = env or os.getenv("RAG_ENV") or CONFIG.get("env_default", "dev")
+    env_cfg = CONFIG.get("env_config", {}).get(env)
+    if not env_cfg:
+        raise ValueError(f"❌ 未找到环境配置: {env}")
+    return env, env_cfg
 
 
-# 全局 Elasticsearch 和 Milvus 客户端（内建连接池）
-es_client = Elasticsearch(f"http://{ES_host}:9200")
-connections.connect(alias="default", host=Milvus_host, port="19530")
+def get_es(env=None):
+    """获取指定环境下的 Elasticsearch 客户端，复用连接"""
+    env, env_cfg = get_env_config(env)
+    if env not in _es_clients:
+        logger.debug(f"🔌 初始化 ES 连接 [{env}]：{env_cfg['es_host']}")
+        _es_clients[env] = Elasticsearch(f"http://{env_cfg['es_host']}:9200")
+    return _es_clients[env]
 
 
-def get_es():
-    """返回全局 ES 客户端"""
-    return es_client
+def get_milvus_collection(env=None):
+    """
+    获取指定环境下的 Milvus collection，collection_name 由 env 配置决定。
+    alias 为环境名。
+    """
+    env, env_cfg = get_env_config(env)
+    alias = env  # 使用环境名作为连接别名
 
-def get_milvus_collection(collection_name):
-    """返回已连接的 Milvus collection 实例"""
-    col = Collection(name=collection_name)
+    if alias not in _milvus_alias_map:
+        logger.debug(f"🔌 初始化 Milvus 连接 [{env}]：{env_cfg['milvus_host']}")
+        connections.connect(alias=alias, host=env_cfg["milvus_host"], port="19530")
+        _milvus_alias_map[alias] = True
+
+    collection_name = env_cfg["collection_name"]
+    col = Collection(name=collection_name, using=alias)
     col.load()
     return col
 
 
+def get_index_name(env=None):
+    """获取当前环境的 Elasticsearch 索引名"""
+    _, env_cfg = get_env_config(env)
+    return env_cfg["index_name"]
+
 # ======================== 获取最大全局索引(milvus) ========================
-def get_max_global_idx_milvus(host, collection_name):
+def get_max_global_idx_milvus(env="dev"):
+    """获取当前环境下 Milvus 中 global_chunk_idx 的最大值"""
     try:
-        connections.connect(alias="default", host=host, port="19530")
-        collection = Collection(name=collection_name)
+        _, cfg = get_env_config(env)
+        alias = env
+        host = cfg["milvus_host"]
+        collection_name = cfg["collection_name"]
+
+        # 初始化连接（如果未连接）
+        if not connections.has_connection(alias):
+            connections.connect(alias=alias, host=host, port="19530")
+
+        collection = Collection(name=collection_name, using=alias)
         collection.load()
+
         results = collection.query(
             expr="global_chunk_idx >= 0",
             output_fields=["global_chunk_idx"],
         )
         if not results:
             return 0
-        # 提取所有 idx，取最大值
         max_idx = max(item["global_chunk_idx"] for item in results)
         return max_idx + 1
     except Exception as e:
@@ -106,13 +139,16 @@ def get_max_global_idx_milvus(host, collection_name):
 
 
 # ======================== ES 索引重建 ========================
-def reset_es(index_name=index_name):
-    """重建 Elasticsearch 索引，使用 IK 分词器，去除 global_chunk_idx，增加 document_index"""
-    es = get_es()
-    print("Connected to ElasticSearch!" if es.ping() else "Connection failed.")
+def reset_es(env="dev"):
+    """重建 Elasticsearch 索引（含 ik 分词与字段映射）"""
+    _, cfg = get_env_config(env)
+    index_name = cfg["index_name"]
+    es = get_es(env)
+
+    logger.info("Connected to Elasticsearch!" if es.ping() else "Connection failed.")
 
     if es.indices.exists(index=index_name):
-        print(f"⚠️ 索引 {index_name} 已存在，删除中...")
+        logger.info(f"⚠️ {env} 环境索引 {index_name} 已存在，删除中...")
         es.indices.delete(index=index_name, ignore_unavailable=True, request_timeout=20)
 
     es.indices.create(
@@ -169,17 +205,25 @@ def reset_es(index_name=index_name):
             }
         },
     )
-    print(f"✅ ES 索引 '{index_name}' 已成功创建（含 document_index）")
+    logger.info(f"✅ {env} 环境 ES 索引 '{index_name}' 已成功创建")
+
 
 # ======================== Milvus 向量库重建 ========================
-def reset_milvus(collection_name=index_name, dim=768):
-    """重建 Milvus 向量集合，含主键自增和 document_index 字段"""
-    # ⚠️ 注意：连接初始化已在 connections.py 执行
-    if utility.has_collection(collection_name):
-        print(f"⚠️ Milvus 集合 '{collection_name}' 已存在，正在删除...")
-        utility.drop_collection(collection_name)
+def reset_milvus(env="dev", dim=768):
+    """重建 Milvus 向量集合（自动获取 collection_name）"""
+    _, cfg = get_env_config(env)
+    collection_name = cfg["collection_name"]
+    host = cfg["milvus_host"]
+    alias = env
 
-    print(f"🚀 正在创建 Milvus collection: {collection_name}")
+    if not connections.has_connection(alias):
+        connections.connect(alias=alias, host=host, port="19530")
+
+    if utility.has_collection(collection_name, using=alias):
+        logger.info(f"⚠️ {env} 环境 Milvus 集合 '{collection_name}' 已存在，正在删除...")
+        utility.drop_collection(collection_name, using=alias)
+
+    logger.info(f"🚀 {env} 环境正在创建 Milvus collection: {collection_name}")
     fields = [
         FieldSchema(name="global_chunk_idx", dtype=DataType.INT64, is_primary=True, auto_id=True),
         FieldSchema(name="document_index", dtype=DataType.INT64),
@@ -194,12 +238,19 @@ def reset_milvus(collection_name=index_name, dim=768):
         FieldSchema(name="question", dtype=DataType.VARCHAR, max_length=1024),
     ]
     schema = CollectionSchema(fields=fields, description="HTML块向量索引")
-    Collection(name=collection_name, schema=schema)
-    print(f"✅ Milvus collection '{collection_name}' 已创建（含主键自增 + document_index）")
+    Collection(name=collection_name, schema=schema, using=alias)
+    logger.info(f"✅ {env} 环境 Milvus collection '{collection_name}' 已创建")
+
 
 # ======================== 插入 Milvus ========================
-def insert_block_to_milvus(doc_meta_list, embedder, collection_name, batch_size=100) -> int:
-    # logger.debug(f"🧠 正在插入向量到 Milvus collection: {collection_name} ...")
+def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=100) -> int:
+    """
+    向指定环境的 Milvus 插入文档块，自动获取 collection_name 和 host
+    """
+    _, cfg = get_env_config(env)
+    collection_name = cfg["collection_name"]
+    host = cfg["milvus_host"]
+
     all_docs = []
     for doc in doc_meta_list:
         doc.setdefault("document_index", -1)
@@ -209,11 +260,14 @@ def insert_block_to_milvus(doc_meta_list, embedder, collection_name, batch_size=
         )
         all_docs.append(node)
 
+    logger.debug(f"🧠 正在插入向量到 Milvus（{env}）collection: {collection_name} ...")
+
+    # 初始化 Milvus 向量库对象（from_documents 会自动建表，但我们建议先 reset）
     milvus = Milvus.from_documents(
-        [all_docs[0]],
+        [all_docs[0]],  # 用第一条初始化 collection
         embedder,
         collection_name=collection_name,
-        connection_args={"host": CONFIG["milvus_host"], "port": "19530"},
+        connection_args={"host": host, "port": "19530"},
         index_params={
             "metric_type": "COSINE",
             "index_type": "IVF_FLAT",
@@ -230,21 +284,26 @@ def insert_block_to_milvus(doc_meta_list, embedder, collection_name, batch_size=
             logger.debug(f"✅ 插入 batch {i // batch_size + 1}: {len(batch)} 条")
         except Exception as e:
             logger.error(f"❌ 插入 batch 失败: {e}")
-    
-    logger.debug(f"✅ 已插入 Milvus：{inserted} 条文档块")
 
+    logger.debug(f"✅ 已插入 Milvus（{env}）：{inserted} 条文档块")
     return inserted
 
 # ======================== 插入 ES ========================
-def insert_block_to_es(doc_meta_list, es_index_name) -> int:
-    es = get_es()
-    # logger.debug(f"📥 正在插入文档到 Elasticsearch 索引: {es_index_name} ...")
+def insert_block_to_es(doc_meta_list, env="dev") -> int:
+    """
+    向指定环境的 Elasticsearch 索引插入文档块，自动获取 index_name
+    """
+    _, cfg = get_env_config(env)
+    index_name = cfg["index_name"]
+    es = get_es(env)
+
+    logger.debug(f"📥 正在插入文档到 Elasticsearch 索引（{env}）: {index_name} ...")
 
     actions = []
     for doc in doc_meta_list:
         doc.setdefault("document_index", -1)
         actions.append({
-            "_index": es_index_name,
+            "_index": index_name,
             "_source": {
                 "document_index": doc["document_index"],
                 "chunk_idx": doc["chunk_idx"],
@@ -260,31 +319,38 @@ def insert_block_to_es(doc_meta_list, es_index_name) -> int:
 
     try:
         resp = helpers.bulk(es, actions)
-        logger.debug(f"✅ 已插入 ES：{resp[0]} 条文档块")
-        return resp[0]  # 成功数
+        logger.debug(f"✅ 已插入 ES（{env}）：{resp[0]} 条文档块")
+        return resp[0]
     except Exception as e:
-        logger.error(f"❌ ES 插入失败: {e}")
+        logger.error(f"❌ ES 插入失败（{env}）: {e}")
         return 0
+
 
 
 
 # ======================== 删除 Milvus 中的文档块 ========================
-def delete_blocks_from_milvus(collection_name, document_index) -> int:
+def delete_blocks_from_milvus(document_index: int, env: str = "dev") -> int:
+    """从指定环境下的 Milvus collection 中删除某个 document_index"""
     try:
-        col = get_milvus_collection(collection_name)
+        col = get_milvus_collection(env=env)
         expr = f"document_index == {document_index}"
-        count = col.num_entities  # 删除前实体总数（可能非严格对应）
         result = col.delete(expr)
-        print(f"🗑️ Milvus: 已删除 document_index = {document_index} 的文档块")
-        return result.delete_count if hasattr(result, "delete_count") else 0
+        count = result.delete_count if hasattr(result, "delete_count") else 0
+        logger.debug(f"🗑️ Milvus（{env}）: 已删除 document_index = {document_index} 的文档块，共 {count} 条")
+        return count
     except Exception as e:
-        print(f"❌ Milvus 删除失败: {e}")
+        logger.error(f"❌ Milvus 删除失败（{env}）: {e}")
         return 0
 
+
 # ======================== 删除 ES 中的文档块 ========================
-def delete_blocks_from_es(index_name, document_index) -> int:
+def delete_blocks_from_es(document_index: int, env: str = "dev") -> int:
+    """从指定环境下的 Elasticsearch 索引中删除某个 document_index"""
     try:
-        es = get_es()
+        _, cfg = get_env_config(env)
+        index_name = cfg["index_name"]
+        es = get_es(env)
+
         query = {
             "query": {
                 "term": {
@@ -295,7 +361,7 @@ def delete_blocks_from_es(index_name, document_index) -> int:
 
         hits = es.search(index=index_name, body=query, size=10000)["hits"]["hits"]
         if not hits:
-            print(f"📭 ES: 未找到 document_index = {document_index} 的文档")
+            logger.debug(f"📭 ES（{env}）: 未找到 document_index = {document_index} 的文档")
             return 0
 
         resp = helpers.bulk(
@@ -305,28 +371,29 @@ def delete_blocks_from_es(index_name, document_index) -> int:
                 for hit in hits
             ]
         )
-        print(f"🗑️ ES: 已删除 document_index = {document_index} 的文档块，共 {resp[0]} 条")
+        logger.debug(f"🗑️ ES（{env}）: 已删除 document_index = {document_index} 的文档块，共 {resp[0]} 条")
         return resp[0]
     except Exception as e:
-        print(f"❌ ES 删除失败: {e}")
+        logger.error(f"❌ ES 删除失败（{env}）: {e}")
         return 0
+
+
 
 # ======================== Milvus 查询函数 ========================
 def query_milvus_blocks(
-    host,
     question,
     embedder,
-    reranker=None,
-    milvus_collection_name="jvliangqianchuan",
+    env="dev",
     top_k=10,
-    rerank_top_k=5
+    rerank_top_k=5,
+    reranker=None,
 ):
+    _, cfg = get_env_config(env)
+    collection_name = cfg["collection_name"]
 
-    # print("📦 Connecting to Milvus ...")
-    connections.connect(alias="default", host=host, port="19530")
-    collection = Collection(name=milvus_collection_name)
+    collection = get_milvus_collection(env=env)
     if not collection.has_index():
-        print(f"⚙️ Creating index on 'vector' ...")
+        print(f"⚙️ Creating index on vector ...")
         collection.create_index(
             field_name="vector",
             index_params={
@@ -338,18 +405,19 @@ def query_milvus_blocks(
         )
         print("✅ Index created.")
     collection.load()
-    query_vec = embedder.embed_query(question)
-    # print(f"✅ 查询向量维度: {len(query_vec)}, 范数: {np.linalg.norm(query_vec):.4f}")
 
-    # print("🔎 Searching Milvus ...")
+    query_vec = embedder.embed_query(question)
+
     results = collection.search(
         data=[query_vec],
         anns_field="vector",
         param={"metric_type": "COSINE", "params": {"nprobe": 100}},
         limit=top_k,
-        output_fields=["text", "page_url", "chunk_idx", "page_name", "title", "summary", "time", "question", 'document_index'],
+        output_fields=[
+            "text", "page_url", "chunk_idx", "page_name",
+            "title", "summary", "time", "question", "document_index"
+        ],
     )
-    # print(results)
 
     milvus_rank = []
     for hits in results:
@@ -363,41 +431,28 @@ def query_milvus_blocks(
                 "time": hit.entity.get("time", ""),
                 "text": hit.entity.get("text", ""),
                 "question": hit.entity.get("question", ""),
+                "document_index": hit.entity.get("document_index", -1),
             })
-
-    # print(f"🔎 Milvus 初始返回数量: {len(milvus_rank)}")
-    # milvus_rank = deduplicate_ranked_blocks(milvus_rank)
-    # print(f"✅ 去重后保留数量: {len(milvus_rank)}")
-
-    # if reranker is not None:
-    #     milvus_rank = rerank_results(milvus_rank, question, reranker, rerank_top_k)
-
-    # print("=" * 60)
-    # print("[Milvus] Top Results:")
-    # for i, doc in enumerate(milvus_rank):
-    #     print(f"#{i+1} 🔸 Chunk ID: {doc['chunk_idx']} | summary: {doc['summary']}")
-    #     print("-" * 100)
-    # print("=" * 60)
 
     return milvus_rank
 
 
 # ======================== ES 查询函数 ========================
 def query_es_blocks(
-    host,
     question,
-    es_index_name="jvliangqianchuan",
+    env="dev",
     top_k=10
 ):
-    es = Elasticsearch(f"http://{host}:9200")
-    
+    _, cfg = get_env_config(env)
+    es = get_es(env)
+    index_name = cfg["index_name"]
+
     keywords = jieba.analyse.extract_tags(question, topK=8, withWeight=True)
     keywords = [_[0] for _ in keywords if _[1] > 0.0]
-    # print("Keywords:", keywords)
 
     fields_config = {"text": {"boost": 1}, "title": {"boost": 2}}
     query = build_optimal_jieba_query(keywords, fields_config)
-    es_response = es.search(index=es_index_name, query=query.get("query", {}), size=top_k)
+    es_response = es.search(index=index_name, query=query.get("query", {}), size=top_k)
 
     es_rank = [
         {
@@ -412,56 +467,48 @@ def query_es_blocks(
             "text": hit["_source"].get("text", ""),
         } for hit in es_response["hits"]["hits"]
     ]
-    # print(f"🔎 ES 初始返回数量: {len(es_rank)}")
-    # milvus_rank = deduplicate_ranked_blocks(es_rank)
-    # print(f"✅ 去重后保留数量: {len(es_rank)}")
-    return es_rank
 
+    return es_rank
 
 
 # ======================== 多源查询函数 ========================
 def query_blocks(
     question,
     embedder,
-    host="localhost",
-    milvus_collection_name="jvliangqianchuan",
-    es_index_name="jvliangqianchuan",
+    env="dev",
     top_k=10,
     reranker=None,
     rerank_top_k=5
 ):
-    # 1. 查询 Milvus
+    # 1. Milvus 查询
     milvus_raw = query_milvus_blocks(
-        host=host,
         question=question,
         embedder=embedder,
-        reranker=None,
-        milvus_collection_name=milvus_collection_name,
+        env=env,
         top_k=top_k,
+        reranker=None,
         rerank_top_k=rerank_top_k
     )
 
-    # 2. 查询 ES
+    # 2. ES 查询
     es_raw = query_es_blocks(
-        host=host,
         question=question,
-        es_index_name=es_index_name,
+        env=env,
         top_k=top_k
     )
 
     print(f"📥 合并前: Milvus={len(milvus_raw)}, ES={len(es_raw)}")
 
-    # 3. 时间优先去重：先内部再交叉（Milvus against ES）
-    # final_blocks = deduplicate_ranked_blocks_pal(milvus_raw + es_raw)
+    # 3. 合并去重（目前仅拼接，如需可替换为 deduplicate_ranked_blocks_pal）
     final_blocks = milvus_raw + es_raw
-    # 4. 可选重排序
+
+    # 4. 可选 rerank
     if reranker is not None:
         final_blocks = rerank_results(final_blocks, question, reranker, top_k=rerank_top_k)
 
     print(f"✅ 最终返回文档块数: {len(final_blocks)}")
     print("📦 返回的文档块示例:")
     for i, doc in enumerate(final_blocks[:5]):
-        # print(doc)
         print(f"  [#{i+1}] document_index={doc.get('document_index',-1)}  page_url={doc['page_url']:<30} chunk_idx={doc['chunk_idx']:<4} title={doc['title'][:30]:<30}")
     return final_blocks
 

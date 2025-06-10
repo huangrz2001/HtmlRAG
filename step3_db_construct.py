@@ -38,6 +38,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_context_window_embed", type=int, default=4096)
     parser.add_argument("--top_k", type=int, default=5)
     parser.add_argument("--device", type=int, default=0)
+    parser.add_argument("--env", type=str, default="dev")
     args = parser.parse_args()
 
     # 初始化模型
@@ -48,8 +49,8 @@ if __name__ == "__main__":
     )
 
     # 重建 ES 和 Milvus 索引
-    reset_es(args.index_name)
-    reset_milvus(args.index_name, dim=len(embedder.embed_query("你好")))
+    reset_es(args.env)
+    reset_milvus(args.env, dim=len(embedder.embed_query("你好")))
 
     # 遍历所有 JSON 文件进行构建
     block_dir = args.block_dir
@@ -67,8 +68,8 @@ if __name__ == "__main__":
             continue
 
         # print(doc_meta_list)
-        cnt4Milvus += insert_block_to_milvus(doc_meta_list, embedder, args.index_name)
-        cnt4ES += insert_block_to_es(doc_meta_list, args.index_name)
+        cnt4Milvus += insert_block_to_milvus(doc_meta_list, embedder, args.env)
+        cnt4ES += insert_block_to_es(doc_meta_list, args.env)
 
 
 

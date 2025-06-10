@@ -155,7 +155,7 @@
 conda env create -f environment.yml
 conda activate htmlrag
 bash run_vllm.sh                                        # 启动vLLM服务
-uvicorn main:app --host 0.0.0.0 --port 8080 --reload    # 启动API
+uvicorn main:app --host 0.0.0.0 --port 8080    # 启动API
 ```
 
 主要依赖组件（已在 `environment.yml` 中包含）：
@@ -207,7 +207,7 @@ bash run_vllm.sh
 确保依赖环境正确后，通过 `uvicorn` 启动主接口服务：
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+uvicorn main:app --host 0.0.0.0 --port 8080
 ```
 
 此时可通过浏览器访问：
