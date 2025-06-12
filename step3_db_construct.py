@@ -29,13 +29,14 @@ if __name__ == "__main__":
     parser.add_argument("--block_dir", type=str, default="./总知识库_cleaned_block")
     # parser.add_argument("--block_dir", type=str, default="./测试知识库_cleaned_block")
     parser.add_argument("--lang", type=str, default="zh")
-    parser.add_argument("--embed_model", type=str, default="/home/algo/AD_agent/models/bce-embedding-base_v1")
+    # parser.add_argument("--embed_model", type=str, default="/home/algo/AD_agent/models/bce-embedding-base_v1")
+    parser.add_argument("--embed_model", type=str, default="/home/algo/AD_agent/models/qwen3-embedding-0.6B")
     parser.add_argument("--max_node_words_embed", type=int, default=4096)
     parser.add_argument("--min_node_words_embed", type=int, default=48)
     parser.add_argument("--max_context_window_embed", type=int, default=4096)
     parser.add_argument("--top_k", type=int, default=5)
     parser.add_argument("--device", type=int, default=0)
-    parser.add_argument("--env", type=str, default="test")
+    parser.add_argument("--env", type=str, default="dev")
     args = parser.parse_args()
 
     # 初始化模型
@@ -72,77 +73,3 @@ if __name__ == "__main__":
 
     print(f"\n✅ 所有文档块构建完成，Milvus总计插入 {cnt4Milvus} 条文档块，ES总计插入 {cnt4ES} 条文档块")
 
-
-
-"""
-
-
-# /usr/local/nginx/conf/nginx.conf
-
-# 全局配置
-user www-data;  # 指定运行用户
-worker_processes auto;
-error_log /usr/local/nginx/logs/error.log;
-pid /usr/local/nginx/logs/nginx.pid;
-
-# events 块
-events {
-    worker_connections 1024;
-}
-
-# http 块（必须包含 server 块）
-http {
-    include       mime.types;
-    default_type  application/octet-stream;
-    sendfile      on;
-    keepalive_timeout 65;
-
-    # 代理配置...（保持原样）
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-
-    server_name _;
-
-    # 🔹 document 服务代理（端口 8080）
-    location /document/ {
-        proxy_pass http://127.0.0.1:8080/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    # 🔹 qa 服务代理（端口 8012）
-    location /qa/ {
-        proxy_pass http://127.0.0.1:8012/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    # 🔹 RAG 服务代理（端口 8086）
-    location /rag/ {
-        proxy_pass http://127.0.0.1:8086/;
-	proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-    # ✅ 可选：开启跨域支持
-    add_header Access-Control-Allow-Origin *;
-    add_header Access-Control-Allow-Headers *;
-    add_header Access-Control-Allow-Methods *;
-}
-
-}
-
-
-"""

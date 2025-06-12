@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # parser.add_argument("--input_file", type=str, default="rewriting_test_set.jsonl", help="输入的 JSONL 文件路径")
     parser.add_argument("--input_file", type=str, default="rewriting_test_set_robust.jsonl", help="输入的 JSONL 文件路径")
-    parser.add_argument("--url", type=str, default="http://192.168.7.179:80/document/query_rewrite", help="FastAPI 重写接口地址")
+    parser.add_argument("--url", type=str, default="http://192.168.7.247:8090/document/query_rewrite", help="FastAPI 重写接口地址")
     args = parser.parse_args()
 
     asyncio.run(main(args.input_file, args.url))

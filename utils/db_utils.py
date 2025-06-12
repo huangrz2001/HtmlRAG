@@ -243,7 +243,7 @@ def reset_milvus(env="dev", dim=768):
 
 
 # ======================== 插入 Milvus ========================
-def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=100) -> int:
+def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=16) -> int:
     """
     向指定环境的 Milvus 插入文档块，自动获取 collection_name 和 host
     """

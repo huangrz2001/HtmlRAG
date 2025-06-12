@@ -10,10 +10,10 @@ SWAP_SPACE=4
 MAX_SEQS=24
 BATCHED_TOKENS=8192
 
-# ========== 启动 Yi-1.5-9B-Chat ==========
+# # ========== 启动 Yi-1.5-9B-Chat ==========
 # CUDA_VISIBLE_DEVICES=$GPU_IDS python3 -m vllm.entrypoints.openai.api_server \
-#   --model /home/algo/.cache/modelscope/hub/models/01ai/Yi-1.5-9B-Chat \
-#   --tokenizer /home/algo/.cache/modelscope/hub/models/01ai/Yi-1.5-9B-Chat \
+#   --model /home/algo/minicpm4-8b \
+#   --tokenizer /home/algo/minicpm4-8b \
 #   --served-model-name glm \
 #   --trust-remote-code \
 #   --tokenizer-mode auto \
