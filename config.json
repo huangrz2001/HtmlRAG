@@ -1,6 +1,6 @@
 {
   "lang": "zh",
-  "embed_model": "/home/algo/AD_agent/models/bce-embedding-base_v1",
+  "embed_model": "/home/algo/AD_agent/models/qwen3-embedding-0.6B",
   "summary_model": "THUDM/glm-4-9b-chat",
   "summary_tokenizer": "THUDM/glm-4-9b-chat",
   "device": "cuda:0",
