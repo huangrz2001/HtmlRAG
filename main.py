@@ -81,7 +81,7 @@ async def insert_html_api_async(document_index: str, page_url: str, resource_id:
     logger.info(f"📥 插入请求 [env={env}]: document_index={document_index}, page_url={page_url}, resource_id={resource_id}")
     html_path = get_local_html_path(page_url)
     if not os.path.exists(html_path):
-        logger.info(f"{html_path} 文件不存在，尝试下载...")
+        logger.info(f"{html_path} 文件不存在，尝试下载从{blackhole_url}...")
         downloaded_path = download_html(resource_id, blackhole_url, html_path)
         if not downloaded_path or not os.path.exists(downloaded_path):
             logger.error("❌ HTML 文件下载失败: %s", html_path)
@@ -165,12 +165,13 @@ class InsertRequest(BaseModel):
     resource_id: str
     page_url: str
     env: str = "dev"
+    blackhole_url: str = "192.168.18.66:28082"
 
 @app.post("/add", summary="新增文档")
 async def add_doc(req: InsertRequest):
     result = await insert_html_api_async(
         req.document_index, req.page_url, req.resource_id,
-        CONFIG.get("blackhole_url", "172.16.4.51:8082"), req.env
+        req.blackhole_url, req.env
     )
     return JSONResponse(content=result)
 
