@@ -13,3 +13,5 @@ finetune/trained_reranker_single/
 finetune/wandb/
 logs/
 archive/
+/__pycache__
+__pycache__/
