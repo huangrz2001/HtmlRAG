@@ -512,7 +512,7 @@ async def generate_summary_vllm_async(text, page_url, model="glm", max_new_token
                 result = await resp.json()
                 summary = result["choices"][0]["message"]["content"].strip()
                 duration = time.time() - start
-                logger.debug(f"✅ vLLM 异步摘要成功 (耗时 {duration:.2f}s), {page_url + ' ' + text[:64]}, 摘要内容: {summary[:64]}...")
+                logger.debug(f"✅ vLLM 异步摘要成功 (耗时 {duration:.2f}s), {page_url + "："+ text[:64]}。摘要内容: {summary[:64]}...")
                 return summary
     except Exception as e:
         logger.error(f"⚠️ vLLM 异步摘要失败: {e}，返回截断文本")
@@ -546,25 +546,3 @@ async def get_embeddings_from_vllm_async(
     embeddings = await asyncio.gather(*tasks)
     return embeddings
 
-
-
-
-
-def get_embedding_from_vllm(text: str, IPandPort='0.0.0.0:8010') -> list[float]:
-        "" "从vLLM服务获取文本嵌入向量 """
-        url = f"http://{IPandPort}/v1/embeddings"  # modify the url when necessary
-        payload = {"input": [text]}
-        try:
-            resp = requests.post(url, json=payload, timeout=5)
-            resp.raise_for_status()
-            data = resp.json()
-            return data["data"][0]["embedding"]
-        except requests.exceptions.Timeout:
-            logger.error(f"vLLM请求超时 | 超时时间: 5s")
-            raise
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"vLLM HTTP错误 | 状态码: {resp.status_code} | 响应: {resp.text}")
-            raise
-        except Exception as e:
-            logger.error(f"vLLM嵌入失败 | 错误: {str(e)}")
-            raise
