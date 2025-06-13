@@ -439,7 +439,7 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
     ]
     # 无意义问题不进行重写，直接返回
     if any(phrase == final_query for phrase in banned_phrases):
-        logger.debug(f"🔍 命中 {phrase} Query 重写跳过：{final_query}")
+        logger.debug(f"🔍 命中过滤词 Query 重写跳过：{final_query}")
         return fallback_rewrite
     # 无对话历史不进行重写，直接返回
     if len(dialogue) < 2:
@@ -517,3 +517,54 @@ async def generate_summary_vllm_async(text, page_url, model="glm", max_new_token
     except Exception as e:
         logger.error(f"⚠️ vLLM 异步摘要失败: {e}，返回截断文本")
         return text[:max_new_tokens]
+
+
+
+async def get_embeddings_from_vllm_async(
+    texts: list[str],
+    url: str,
+    timeout: int = 10,
+    max_concurrent_tasks: int = 16
+) -> list[list[float]]:
+    semaphore = asyncio.Semaphore(max_concurrent_tasks)
+    async def _fetch(text: str) -> list[float]:
+        payload = {"input": text}
+        async with semaphore, aiohttp.ClientSession() as session:
+            try:
+                async with session.post(url, json=payload, timeout=timeout) as resp:
+                    resp.raise_for_status()
+                    data = await resp.json()
+                    # 假设接口返回 {"data":[{"embedding": [...]}, ...]}
+                    return data["data"][0]["embedding"]
+            except Exception as e:
+                logger.error(f"❌ 文本推理失败: {e} | text={text!r}")
+                raise
+
+    # 创建并发任务
+    tasks = [asyncio.create_task(_fetch(txt)) for txt in texts]
+    # 并发执行并收集结果
+    embeddings = await asyncio.gather(*tasks)
+    return embeddings
+
+
+
+
+
+def get_embedding_from_vllm(text: str, IPandPort='0.0.0.0:8010') -> list[float]:
+        "" "从vLLM服务获取文本嵌入向量 """
+        url = f"http://{IPandPort}/v1/embeddings"  # modify the url when necessary
+        payload = {"input": [text]}
+        try:
+            resp = requests.post(url, json=payload, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["data"][0]["embedding"]
+        except requests.exceptions.Timeout:
+            logger.error(f"vLLM请求超时 | 超时时间: 5s")
+            raise
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"vLLM HTTP错误 | 状态码: {resp.status_code} | 响应: {resp.text}")
+            raise
+        except Exception as e:
+            logger.error(f"vLLM嵌入失败 | 错误: {str(e)}")
+            raise

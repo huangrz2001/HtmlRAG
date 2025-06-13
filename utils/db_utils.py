@@ -59,13 +59,19 @@ from time import sleep
 from elasticsearch import Elasticsearch, helpers
 import jieba.analyse
 from utils.config import CONFIG, logger
+from utils.llm_api import get_embeddings_from_vllm_async
+import numpy as np
+from typing import List
+
 
 # 加载自定义词典（适用于电商/运营场景）
 jieba.load_userdict("./user_dict.txt")
 
 # 全局连接池
 _es_clients = {}
-_milvus_alias_map = {}
+_milvus_alias_map = {}  # 存储已连接的别名
+_milvus_collection_cache = {}  # 存储已创建并加载的 Collection 对象
+
 
 def get_env_config(env=None):
     """获取指定环境下的完整配置项"""
@@ -87,21 +93,30 @@ def get_es(env=None):
 
 def get_milvus_collection(env=None):
     """
-    获取指定环境下的 Milvus collection，collection_name 由 env 配置决定。
-    alias 为环境名。
+    获取指定环境下的 Milvus collection，使用缓存机制避免重复创建和加载。
     """
     env, env_cfg = get_env_config(env)
     alias = env  # 使用环境名作为连接别名
-
+    collection_name = env_cfg["collection_name"]
+    print(collection_name)
+    
+    # 构建缓存键
+    cache_key = f"{alias}_{collection_name}"
+    
+    # 检查连接是否已存在，不存在则创建
     if alias not in _milvus_alias_map:
         logger.debug(f"🔌 初始化 Milvus 连接 [{env}]：{env_cfg['milvus_host']}")
         connections.connect(alias=alias, host=env_cfg["milvus_host"], port="19530")
         _milvus_alias_map[alias] = True
-
-    collection_name = env_cfg["collection_name"]
-    col = Collection(name=collection_name, using=alias)
-    col.load()
-    return col
+    
+    # 检查 Collection 是否已缓存，不存在则创建并加载
+    if cache_key not in _milvus_collection_cache:
+        logger.debug(f"📚 加载 Milvus Collection: {collection_name}")
+        col = Collection(name=collection_name, using=alias)
+        col.load()
+        _milvus_collection_cache[cache_key] = col
+    
+    return _milvus_collection_cache[cache_key]
 
 
 def get_index_name(env=None):
@@ -241,9 +256,8 @@ def reset_milvus(env="dev", dim=768):
     Collection(name=collection_name, schema=schema, using=alias)
     logger.info(f"✅ {env} 环境 Milvus collection '{collection_name}' 已创建")
 
-
 # ======================== 插入 Milvus ========================
-def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=16) -> int:
+def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=8) -> int:
     """
     向指定环境的 Milvus 插入文档块，自动获取 collection_name 和 host
     """
@@ -288,6 +302,64 @@ def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=16) ->
     logger.debug(f"✅ 已插入 Milvus（{env}）：{inserted} 条文档块")
     return inserted
 
+
+async def insert_blocks_to_milvus_vllm_async(
+    doc_meta_list: List[dict],
+    url: str,
+    env: str = "dev",
+    batch_size: int = 16,
+):
+    _, cfg = get_env_config(env)
+    collection = get_milvus_collection(env)
+    logger.debug(f"🧠 准备插入 {len(doc_meta_list)} 条文档块 到 Milvus[{env}]：{cfg['collection_name']}")
+
+    total_inserted = 0
+    N = len(doc_meta_list)
+
+    for start in range(0, N, batch_size):
+        batch = doc_meta_list[start : start + batch_size]
+
+        try:
+            # 先收集一批用于 VLLM 获取 embedding 的文本（比如 title 或 question）
+            texts_for_embedding = [doc.get("text", "") for doc in batch]
+            embeddings = await get_embeddings_from_vllm_async(texts_for_embedding, url)
+
+            # 构造每列
+            document_index =   [doc.get("document_index", -1) for doc in batch]
+            chunk_idx =        [doc.get("chunk_idx", -1) for doc in batch]
+            vector =           embeddings
+            text =             [doc.get("text", "") for doc in batch]
+            page_url =         [doc.get("page_url", "") for doc in batch]
+            page_name =        [doc.get("page_name", "") for doc in batch]
+            title =            [doc.get("title", "") for doc in batch]
+            summary =          [doc.get("summary", "") for doc in batch]
+            time =             [doc.get("time", "") for doc in batch]
+            question =         [doc.get("question", "") for doc in batch]
+
+            milvus_data = [
+                document_index,
+                chunk_idx,
+                vector,
+                text,
+                page_url,
+                page_name,
+                title,
+                summary,
+                time,
+                question,
+            ]
+
+            collection.insert(milvus_data)
+            logger.debug(f"✅ Batch {start//batch_size + 1} 插入成功：{len(batch)} 条")
+            total_inserted += len(batch)
+
+        except Exception as e:
+            logger.error(f"❌ Batch {start//batch_size + 1} 插入失败：{e}")
+
+    logger.info(f"🚀 插入完成，共成功插入 {total_inserted} 条")
+    return total_inserted
+
+
 # ======================== 插入 ES ========================
 def insert_block_to_es(doc_meta_list, env="dev") -> int:
     """
@@ -301,7 +373,8 @@ def insert_block_to_es(doc_meta_list, env="dev") -> int:
 
     actions = []
     for doc in doc_meta_list:
-        doc.setdefault("document_index", -1)
+        if "document_index" not in doc:
+            doc["document_index"] = -1
         actions.append({
             "_index": index_name,
             "_source": {

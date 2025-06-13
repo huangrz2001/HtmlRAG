@@ -19,7 +19,8 @@ from utils.html_utils import clean_html, build_block_tree
 from utils.text_process_utils import generate_block_documents_async
 from utils.db_utils import (
     insert_block_to_es, insert_block_to_milvus,
-    delete_blocks_from_es, delete_blocks_from_milvus
+    delete_blocks_from_es, delete_blocks_from_milvus,
+    insert_blocks_to_milvus_vllm_async
 )
 from utils.llm_api import rewrite_query_vllm_async
 from utils.config import CONFIG, logger
@@ -27,10 +28,10 @@ from utils.config import CONFIG, logger
 # ======================== 嵌入模型加载 ========================
 DEVICE = CONFIG.get("device", f"cuda:1" if torch.cuda.is_available() else "cpu")
 
-embedder = HuggingFaceEmbeddings(
-    model_name=CONFIG["embed_model"],
-    model_kwargs={"device": DEVICE}
-)
+# embedder = HuggingFaceEmbeddings(
+#     model_name=CONFIG["embed_model"],
+#     model_kwargs={"device": DEVICE}
+# )
 
 # ======================== 公共函数 ========================
 def parse_time_tag(html: str):
@@ -117,7 +118,8 @@ async def insert_html_api_async(document_index: str, page_url: str, resource_id:
             doc["document_index"] = int(document_index)
             doc["chunk_idx"] = i
 
-        milvus_cnt = insert_block_to_milvus(doc_meta, embedder, env=env)
+        # milvus_cnt = insert_block_to_milvus(doc_meta, embedder, env=env)
+        milvus_cnt = await insert_blocks_to_milvus_vllm_async(doc_meta, url=CONFIG["embed_api_url"], env=env)
         es_cnt = insert_block_to_es(doc_meta, env=env)
 
         return {
