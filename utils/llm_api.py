@@ -512,7 +512,7 @@ async def generate_summary_vllm_async(text, page_url, model="glm", max_new_token
                 result = await resp.json()
                 summary = result["choices"][0]["message"]["content"].strip()
                 duration = time.time() - start
-                logger.debug(f"✅ vLLM 异步摘要成功 (耗时 {duration:.2f}s), {page_url + "："+ text[:64]}。摘要内容: {summary[:64]}...")
+                logger.debug(f"✅ vLLM 异步摘要成功 (耗时 {duration:.2f}s), {page_url + '：' + text[:64]}。摘要内容: {summary[:64]}...")
                 return summary
     except Exception as e:
         logger.error(f"⚠️ vLLM 异步摘要失败: {e}，返回截断文本")
@@ -529,7 +529,8 @@ async def get_embeddings_from_vllm_async(
     semaphore = asyncio.Semaphore(max_concurrent_tasks)
     async def _fetch(text: str) -> list[float]:
         payload = {"input": text}
-        async with semaphore, aiohttp.ClientSession() as session:
+        async with sem:
+            session = await get_aiohttp_session()
             try:
                 async with session.post(url, json=payload, timeout=timeout) as resp:
                     resp.raise_for_status()

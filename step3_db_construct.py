@@ -36,7 +36,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_context_window_embed", type=int, default=4096)
     parser.add_argument("--top_k", type=int, default=5)
     parser.add_argument("--device", type=int, default=0)
-    parser.add_argument("--env", type=str, default="dev")
+    parser.add_argument("--env", type=str, default="test")
     args = parser.parse_args()
 
     # 初始化模型
