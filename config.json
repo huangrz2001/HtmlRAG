@@ -10,7 +10,7 @@
   "log_level": "debug", 
   "blackhole_url": "192.168.18.66:28082",
   "vllm_api_url": "http://localhost:8011/v1/chat/completions",
-  "vllm_max_concurrent_requests": 32,
+  "vllm_max_concurrent_requests": 4,
   "vllm_timeout": 60,
 
   "env_default": "dev",
@@ -30,6 +30,7 @@
     "uat": {
       "milvus_host": "192.168.19.228",
       "es_host": "192.168.19.228",
+      "milvus_token": "todo",
       "index_name": "cs_kb",
       "collection_name": "cs_kb"
     },

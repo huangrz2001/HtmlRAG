@@ -7,13 +7,13 @@ MEM_UTIL=0.6        # 显存使用率
 MAX_LEN=4096
 TP_SIZE=2
 SWAP_SPACE=4
-MAX_SEQS=24
+MAX_SEQS=4
 BATCHED_TOKENS=8192
 
 # # ========== 启动 Yi-1.5-9B-Chat ==========
 # CUDA_VISIBLE_DEVICES=$GPU_IDS python3 -m vllm.entrypoints.openai.api_server \
-#   --model /home/algo/minicpm4-8b \
-#   --tokenizer /home/algo/minicpm4-8b \
+#   --model /home/algo/Qwen-7B-Chat \
+#   --tokenizer /home/algo/Qwen-7B-Chat \
 #   --served-model-name glm \
 #   --trust-remote-code \
 #   --tokenizer-mode auto \

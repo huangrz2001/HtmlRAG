@@ -348,13 +348,13 @@ def rewrite_query_vllm(
     fallback_rewrite = final_query
     # 构造 prompt
     prompt = (
-        "你是一个电商平台智能客服的对话清晰化助手。\n"
+        "你是一个问题重写API，只会重写优化或复读用户的问题。\n"
         "用户提出的问题可能存在复杂指代、上下文依赖或表达模糊等问题。\n"
         "你需要根据多轮历史对话，丰富润色用户的当前问题，使其成为一个清晰、完整的独立问题。\n\n"
         "下面是要求：\n"
-        "- 准确解析用户真实意图，使得这个独立问题尽量完整，尽可能包含所有信息；\n"
-        "- 问题越具体越好，特别是要捕捉到关键的指代，场景，特别针对的问题和例子等等；\n"
-        "- 不可以捏造不存在的信息，同时过滤掉与真实意图无关的信息；\n"
+        "- 准确解析用户真实意图，从历史中发掘指代和意图，使得这个独立问题尽量完整，尽可能包含所有信息关键词,特别是要补充关键的动机，指代和场景（润色后的问题至少涉及：用户面对什么前置情况，强调了什么限制，有什么疑问等），但不可以捏造不存在的信息；\n"
+        "- 如果当前问题本身是 1.非问题（如“你好”等寒暄，“退出系统”等指令，“呵呵”等无意义灌水），2. 非技术性问题（“你是谁”，“你是AI吗”等身份询问，“人生的意义是什么”等无关性问题），不进行润色直接返回原句子；\n"
+        "- 一定一定不可以回答用户问题，你只关注问题本身的润色；\n"
         "- 不添加解释、注释、引导语等，只输出润色后的问题句。\n\n"
         "下面是历史对话：\n"
     )
@@ -391,31 +391,6 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
     使用 vLLM 异步接口重写 query，带全局 session 和并发控制
     """
     fallback_rewrite = final_query
-    # prompt = (
-    #     "你是一个问题重写API，只会重写优化或复读用户的问题。\n"
-    #     "用户提出的问题可能存在复杂指代、上下文依赖或表达模糊等问题。\n"
-    #     "你需要根据多轮历史对话，丰富润色用户的当前问题，使其成为一个清晰、完整的独立问题。\n\n"
-    #     "下面是要求：\n"
-    #     "- 准确解析用户真实意图，从历史中发掘指代和意图，使得这个独立问题尽量完整，尽可能包含所有信息关键词,特别是要补充关键的动机，指代和场景（润色后的问题至少涉及：用户面对什么前置情况，强调了什么限制，有什么疑问等），但不可以捏造不存在的信息；\n"
-    #     "- 如果当前问题本身是 1.非问题（如“你好”等寒暄，“退出系统”等指令，“呵呵”等无意义灌水），2. 非技术性问题（“你是谁”，“你是AI吗”等身份询问，“人生的意义是什么”等无关性问题），不进行润色直接返回原句子；\n"
-    #     "- 一定一定不可以回答用户问题，你只关注问题本身的润色；\n"
-    #     "- 不添加解释、注释、引导语等，只输出润色后的问题句。\n\n"
-    #     "下面是历史对话：\n"
-    # )
-    prompt = (
-        "你是一个专业的问题重写系统。对于对话历史和当前问题，你的任务分为两步：\n"
-        "步骤一：判断是否需要重写： \n"
-        "- 如果问题属于以下情况：寒暄用语（如你好）、无意义灌水（如呵呵）、非技术性身份询问（如你是谁）、哲学性问题（如人生意义），则直接返回原始问题，不做任何修改；\n"
-        "- 如果历史对话过短或者历史对话中缺乏可以用于补全的信息，则直接返回原始问题，不做任何修改；\n"
-        "- 否则进入步骤二。 \n"
-        "步骤二：进行问题重写： \n"
-        "- 根据上下文丰富指代与背景信息；\n"
-        "- 补充用户面对的场景、真实意图的动机、限制条件与具体需求；\n"
-        "- 保持事实真实，禁止编造不存在的信息； \n"
-        "- 不添加解释、注释、引导语等内容，仅输出重写后的问题。\n"
-        "注意：你不是客服、助手或AI，不进行任何问题回答或解释。 \n"
-        "下面是历史对话：\n\n"
-    )
     banned_phrases = [
         # 1. 打招呼 / 寒暄类
         "你好", "您好", "hi", "hello", "哈喽", "在吗", "喂", "请问在吗", "有人吗", "hello？",
@@ -447,13 +422,25 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
         return fallback_rewrite
 
 
+    prompt = (
+        "你是一个专业的问题重写系统。对于对话历史和当前问题，你的任务分为两步：\n"
+        "步骤一：判断是否需要重写： \n"
+        "- 如果问题属于以下情况：寒暄用语（如你好）、无意义灌水（如呵呵）、非技术性身份询问（如你是谁）、哲学性问题（如人生意义），则直接返回原始问题，不做任何修改；\n"
+        "- 如果历史对话过短或者历史对话中缺乏可以用于补全的信息，则直接返回原始问题，不做任何修改；\n"
+        "- 否则进入步骤二。 \n"
+        "步骤二：进行问题重写： \n"
+        "- 根据上下文丰富指代与背景信息；\n"
+        "- 补充用户面对的场景、真实意图的动机、限制条件与具体需求；\n"
+        "- 保持事实真实，禁止编造不存在的信息； \n"
+        "- 不添加解释、注释、引导语等内容，仅输出重写后的问题。\n"
+        "注意：你不是客服、助手或AI，不进行任何问题回答或解释。 \n"
+        "下面是历史对话：\n\n"
+    )
     for turn in dialogue:
         role = "用户" if turn.get("speaker") == "user" else "系统"
         content = turn.get("text", "").replace("\n", " ").strip()
         prompt += f"{role}：{content}\n"
-
     prompt += f"用户当前问题是：{final_query.strip()}\n 请你遵循要求进行重写："
-
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -461,6 +448,46 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
         "temperature": 0.2,
         "top_p": 0.5,
     }
+
+
+
+    # # qwen构建系统指令作为system角色
+    # system_prompt = (
+    #     "你是一个专业的问题重写系统。对于对话历史和当前问题，你的任务分为两步：\n"
+    #     "步骤一：判断是否需要重写： \n"
+    #     "- 如果问题属于以下情况：寒暄用语（如你好）、无意义灌水（如呵呵）、非技术性身份询问（如你是谁）、哲学性问题（如人生意义），则直接返回原始问题，不做任何修改；\n"
+    #     "- 如果历史对话过短或者历史对话中缺乏可以用于补全的信息，则直接返回原始问题，不做任何修改；\n"
+    #     "- 否则进入步骤二。 \n"
+    #     "步骤二：进行问题重写： \n"
+    #     "- 根据上下文丰富指代与背景信息；\n"
+    #     "- 补充用户面对的场景、真实意图的动机、限制条件与具体需求；\n"
+    #     "- 保持事实真实，禁止编造不存在的信息； \n"
+    #     "- 不添加解释、注释、引导语等内容，仅输出重写后的问题。\n"
+    #     "注意：你不是客服、助手或AI，不进行任何问题回答或解释。"
+    # )
+    # # 构建历史对话作为user角色
+    # history_content = "下面是历史对话：\n\n"
+    # for turn in dialogue:
+    #     role = "用户" if turn.get("speaker") == "user" else "系统"
+    #     content = turn.get("text", "").replace("\n", " ").strip()
+    #     history_content += f"{role}：{content}\n"
+    # # 当前问题
+    # current_question = f"用户当前问题是：{final_query.strip()}\n请你遵循要求进行重写。"
+    # # 构建多轮对话格式的messages
+    # messages = [
+    #     {"role": "system", "content": system_prompt},
+    #     {"role": "user", "content": history_content + current_question}
+    # ]
+    # payload = {
+    #     "model": model,
+    #     "messages": messages,
+    #     "max_tokens": max_new_tokens,
+    #     "temperature": 0.2,
+    #     "top_p": 0.5,
+    #     "top_k": -1,  # 禁用 top_k
+    # }
+
+
     try:
         async with sem:
             session = await get_aiohttp_session()
@@ -526,7 +553,6 @@ async def get_embeddings_from_vllm_async(
     timeout: int = 10,
     max_concurrent_tasks: int = 16
 ) -> list[list[float]]:
-    semaphore = asyncio.Semaphore(max_concurrent_tasks)
     async def _fetch(text: str) -> list[float]:
         payload = {"input": text}
         async with sem:
@@ -547,3 +573,22 @@ async def get_embeddings_from_vllm_async(
     embeddings = await asyncio.gather(*tasks)
     return embeddings
 
+
+
+def get_embedding_from_vllm(text: str, url) -> list[float]:
+        "" "从vLLM服务获取文本嵌入向量 """
+        payload = {"input": [text]}
+        try:
+            resp = requests.post(url, json=payload, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["data"][0]["embedding"]
+        except requests.exceptions.Timeout:
+            logger.error(f"vLLM请求超时 | 超时时间: 5s")
+            raise
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"vLLM HTTP错误 | 状态码: {resp.status_code} | 响应: {resp.text}")
+            raise
+        except Exception as e:
+            logger.error(f"vLLM嵌入失败 | 错误: {str(e)}")
+            raise

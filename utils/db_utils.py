@@ -59,7 +59,7 @@ from time import sleep
 from elasticsearch import Elasticsearch, helpers
 import jieba.analyse
 from utils.config import CONFIG, logger
-from utils.llm_api import get_embeddings_from_vllm_async
+from utils.llm_api import get_embeddings_from_vllm_async, get_embedding_from_vllm
 import numpy as np
 from typing import List
 
@@ -166,60 +166,100 @@ def reset_es(env="dev"):
         logger.info(f"⚠️ {env} 环境索引 {index_name} 已存在，删除中...")
         es.indices.delete(index=index_name, ignore_unavailable=True, request_timeout=20)
 
+    # es.indices.create(
+    #     index=index_name,
+    #     body={
+    #         "settings": {
+    #             "analysis": {
+    #                 "analyzer": {
+    #                     "ik_max_word": {
+    #                         "type": "custom",
+    #                         "tokenizer": "ik_max_word"
+    #                     }
+    #                 }
+    #             }
+    #         },
+    #         "mappings": {
+    #             "properties": {
+    #                 "document_index": { "type": "long" },
+    #                 "chunk_idx": { "type": "integer" },
+    #                 "text": {
+    #                     "type": "text",
+    #                     "analyzer": "ik_max_word",
+    #                     "fields": { "keyword": { "type": "keyword" } }
+    #                 },
+    #                 "page_url": {
+    #                     "type": "text",
+    #                     "fields": { "keyword": { "type": "keyword" } }
+    #                 },
+    #                 "page_name": {
+    #                     "type": "text",
+    #                     "analyzer": "ik_max_word",
+    #                     "fields": { "keyword": { "type": "keyword" } }
+    #                 },
+    #                 "title": {
+    #                     "type": "text",
+    #                     "analyzer": "ik_max_word",
+    #                     "fields": { "keyword": { "type": "keyword" } }
+    #                 },
+    #                 "summary": {
+    #                     "type": "text",
+    #                     "analyzer": "ik_max_word",
+    #                     "fields": { "keyword": { "type": "keyword" } }
+    #                 },
+    #                 "time": {
+    #                     "type": "text",
+    #                     "fields": { "keyword": { "type": "keyword" } }
+    #                 },
+    #                 "question": {
+    #                     "type": "text",
+    #                     "analyzer": "ik_max_word",
+    #                     "fields": { "keyword": { "type": "keyword" } }
+    #                 }
+    #             }
+    #         }
+    #     },
+    # )
     es.indices.create(
-        index=index_name,
-        body={
-            "settings": {
-                "analysis": {
-                    "analyzer": {
-                        "ik_max_word": {
-                            "type": "custom",
-                            "tokenizer": "ik_max_word"
-                        }
-                    }
+    index=index_name,
+    body={
+        "mappings": {
+            "properties": {
+                "document_index": { "type": "long" },
+                "chunk_idx": { "type": "integer" },
+                "text": {
+                    "type": "text",
+                    "fields": { "keyword": { "type": "keyword" } }
+                },
+                "page_url": {
+                    "type": "text",
+                    "fields": { "keyword": { "type": "keyword" } }
+                },
+                "page_name": {
+                    "type": "text",
+                    "fields": { "keyword": { "type": "keyword" } }
+                },
+                "title": {
+                    "type": "text",
+                    "fields": { "keyword": { "type": "keyword" } }
+                },
+                "summary": {
+                    "type": "text",
+                    "fields": { "keyword": { "type": "keyword" } }
+                },
+                "time": {
+                    "type": "text",
+                    "fields": { "keyword": { "type": "keyword" } }
+                },
+                "question": {
+                    "type": "text",
+                    "fields": { "keyword": { "type": "keyword" } }
                 }
-            },
-            "mappings": {
-                "properties": {
-                    "document_index": { "type": "long" },
-                    "chunk_idx": { "type": "integer" },
-                    "text": {
-                        "type": "text",
-                        "analyzer": "ik_max_word",
-                        "fields": { "keyword": { "type": "keyword" } }
-                    },
-                    "page_url": {
-                        "type": "text",
-                        "fields": { "keyword": { "type": "keyword" } }
-                    },
-                    "page_name": {
-                        "type": "text",
-                        "analyzer": "ik_max_word",
-                        "fields": { "keyword": { "type": "keyword" } }
-                    },
-                    "title": {
-                        "type": "text",
-                        "analyzer": "ik_max_word",
-                        "fields": { "keyword": { "type": "keyword" } }
-                    },
-                    "summary": {
-                        "type": "text",
-                        "analyzer": "ik_max_word",
-                        "fields": { "keyword": { "type": "keyword" } }
-                    },
-                    "time": {
-                        "type": "text",
-                        "fields": { "keyword": { "type": "keyword" } }
-                    },
-                    "question": {
-                        "type": "text",
-                        "analyzer": "ik_max_word",
-                        "fields": { "keyword": { "type": "keyword" } }
-                    }
                 }
             }
         },
     )
+
     logger.info(f"✅ {env} 环境 ES 索引 '{index_name}' 已成功创建")
 
 
@@ -257,7 +297,7 @@ def reset_milvus(env="dev", dim=768):
     logger.info(f"✅ {env} 环境 Milvus collection '{collection_name}' 已创建")
 
 # ======================== 插入 Milvus ========================
-def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=8) -> int:
+def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=2) -> int:
     """
     向指定环境的 Milvus 插入文档块，自动获取 collection_name 和 host
     """
@@ -307,7 +347,7 @@ async def insert_blocks_to_milvus_vllm_async(
     doc_meta_list: List[dict],
     url: str,
     env: str = "dev",
-    batch_size: int = 16,
+    batch_size: int = 2,
 ):
     _, cfg = get_env_config(env)
     collection = get_milvus_collection(env)
@@ -358,6 +398,61 @@ async def insert_blocks_to_milvus_vllm_async(
 
     logger.info(f"🚀 插入完成，共成功插入 {total_inserted} 条")
     return total_inserted
+
+
+
+def insert_blocks_to_milvus_vllm(
+    doc_meta_list: List[dict],
+    url: str,
+    env: str = "dev",
+):
+    """将文档块逐条插入 Milvus"""
+    _, cfg = get_env_config(env)
+    collection = get_milvus_collection(env)
+    logger.debug(f"🧠 准备插入 {len(doc_meta_list)} 条文档块 到 Milvus[{env}]：{cfg['collection_name']}")
+
+    success_count = 0
+    failed_count = 0
+    failed_indices = []
+
+    for idx, doc in enumerate(doc_meta_list):
+        try:
+            # 获取文本嵌入向量
+            text = doc.get("text", "")
+            embeddings = get_embedding_from_vllm(text, url)  # 同步版本的嵌入函数
+            
+            # 构造插入数据
+            milvus_data = [
+                [doc.get("document_index", -1)],
+                [doc.get("chunk_idx", -1)],
+                [embeddings[0]],  # 取第一个嵌入向量
+                [text],
+                [doc.get("page_url", "")],
+                [doc.get("page_name", "")],
+                [doc.get("title", "")],
+                [doc.get("summary", "")],
+                [doc.get("time", "")],
+                [doc.get("question", "")],
+            ]
+            
+            # 单条插入
+            collection.insert(milvus_data)
+            success_count += 1
+            logger.debug(f"✅ 插入成功：文档索引 {doc.get('document_index', -1)}，块索引 {doc.get('chunk_idx', -1)}")
+            
+        except Exception as e:
+            failed_count += 1
+            failed_indices.append(idx)
+            logger.error(f"❌ 插入失败：文档索引 {doc.get('document_index', -1)}，块索引 {doc.get('chunk_idx', -1)}，错误：{e}")
+    
+    logger.info(f"🚀 插入完成，成功 {success_count} 条，失败 {failed_count} 条")
+    
+    if failed_count > 0:
+        logger.warning(f"⚠️ 以下索引的文档插入失败：{failed_indices}")
+    
+    return success_count
+
+
 
 
 # ======================== 插入 ES ========================
@@ -510,6 +605,7 @@ def query_milvus_blocks(
     return milvus_rank
 
 
+
 # ======================== ES 查询函数 ========================
 def query_es_blocks(
     question,
@@ -542,6 +638,9 @@ def query_es_blocks(
     ]
 
     return es_rank
+
+
+
 
 
 # ======================== 多源查询函数 ========================
