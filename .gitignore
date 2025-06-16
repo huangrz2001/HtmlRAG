@@ -18,3 +18,8 @@ logs/*
 archive/
 /__pycache__
 __pycache__/
+logs/
+__pycache__/
+知识库*/
+*.log
+*.tmp
