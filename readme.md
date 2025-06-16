@@ -152,9 +152,11 @@
 ### ✅ Python 依赖环境
 请使用 Python ≥ 3.8，推荐使用 Conda 环境：
 ```bash
+git clone http://192.168.20.122/zlsd-algorithm/customer_service/db_construct.git
+cd db_construct
 conda env create -f environment.yml
 conda activate htmlrag
-bash run_vllm.sh                                        # 启动vLLM服务
+bash run_vllm.sh                               # 启动vLLM服务
 uvicorn main:app --host 0.0.0.0 --port 8080    # 启动API
 ```
 
@@ -219,7 +221,7 @@ uvicorn main:app --host 0.0.0.0 --port 8080
 ### 🌐 3. Nginx 反向代理配置（支持多模块统一服务融合）
 
 为了将不同端口的多个子服务（如：文档管理、QA 问答、RAG 检索）整合至同一 80 端口下，可使用以下 Nginx 配置：
-nginx/sites-enabled/default（whereis nginx，然后找到sbin/nginx重启）
+/etc/nginx/sites-enabled/default（用whereis nginx找到，sudo nginx -t检查语法，然后找到sbin/nginx重启或者sudo systemctl restart nginx）
 ```nginx
 server {
     listen 80 default_server;
