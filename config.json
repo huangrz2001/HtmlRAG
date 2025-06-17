@@ -31,7 +31,8 @@
       "milvus_host": "192.168.19.228",
       "es_host": "192.168.19.228",
       "milvus_token": "todo",
-      "index_name": "cs_kb",
+      "milvus_user": "root",
+      "milvus_password": "Zlsd@2025milvus",
       "collection_name": "cs_kb"
     },
     "prod": {

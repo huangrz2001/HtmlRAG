@@ -2,17 +2,25 @@
 ---
 
 ## 🔎 RAG 检索服务接口文档
-开发环境：  
+开发/测试环境：  
 > 🌐 **Base URL**：`http://192.168.7.179:80`  
 > 🌐 **RAG docs**：`http://192.168.7.179:80/rag/docs`  
 > 🌐 **问答对CURD docs**：`http://192.168.7.179:80/qa/docs`  
 > 🌐 **文档CURD及query重写 docs**：`http://192.168.7.179:80/document/docs`
 
-测试环境：  
+UAT环境：  
 > 🌐 **Base URL**：`http://192.168.7.247:8090`  
 > 🌐 **RAG docs**：`http://192.168.7.247:8090/rag/docs`  
 > 🌐 **问答对CURD docs**：`http://192.168.7.247:8090/qa/docs`  
 > 🌐 **文档CURD及query重写 docs**：`http://192.168.7.247:8090/document/docs`
+
+生产环境：  
+> 🌐 **Base URL**：`http://192.168.7.101:80`  
+> 🌐 **RAG docs**：`http://192.168.7.101:80/rag/docs`  
+> 🌐 **问答对CURD docs**：`http://192.168.7.101:80/qa/docs`  
+> 🌐 **文档CURD及query重写 docs**：`http://192.168.7.101:80/document/docs`
+
+下面的API示例以开发环境（`192.168.7.179:80`）为例，实际调用中自行替代为合适的API
 
 ---
 
