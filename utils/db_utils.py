@@ -81,13 +81,18 @@ def get_env_config(env=None):
         raise ValueError(f"❌ 未找到环境配置: {env}")
     return env, env_cfg
 
-
-def get_es(env=None):
-    """获取指定环境下的 Elasticsearch 客户端，复用连接"""
+def get_es_client(env=None):
     env, env_cfg = get_env_config(env)
+    
     if env not in _es_clients:
         logger.debug(f"🔌 初始化 ES 连接 [{env}]：{env_cfg['es_host']}")
-        _es_clients[env] = Elasticsearch(f"http://{env_cfg['es_host']}:9200")
+        es = Elasticsearch(
+            hosts=[f"http://{env_cfg['es_host']}:9200"],
+            basic_auth=(env_cfg["es_user"], env_cfg["es_password"]),
+            request_timeout=30
+        )
+        _es_clients[env] = es
+    
     return _es_clients[env]
 
 
