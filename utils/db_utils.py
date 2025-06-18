@@ -81,40 +81,77 @@ def get_env_config(env=None):
         raise ValueError(f"❌ 未找到环境配置: {env}")
     return env, env_cfg
 
-def get_es_client(env=None):
+def get_es(env=None):
     env, env_cfg = get_env_config(env)
     
     if env not in _es_clients:
         logger.debug(f"🔌 初始化 ES 连接 [{env}]：{env_cfg['es_host']}")
+    if "es_user" in env_cfg and "es_password" in env_cfg:
         es = Elasticsearch(
             hosts=[f"http://{env_cfg['es_host']}:9200"],
             basic_auth=(env_cfg["es_user"], env_cfg["es_password"]),
             request_timeout=30
         )
         _es_clients[env] = es
-    
+    else:
+        _es_clients[env] = Elasticsearch(f"http://{env_cfg['es_host']}:9200")
+
+
     return _es_clients[env]
 
 
-def get_milvus_collection(env=None):
-    """
-    获取指定环境下的 Milvus collection，使用缓存机制避免重复创建和加载。
-    """
-    env, env_cfg = get_env_config(env)
-    alias = env  # 使用环境名作为连接别名
-    collection_name = env_cfg["collection_name"]
-    print(collection_name)
+# def get_milvus_collection(env=None):
+#     """
+#     获取指定环境下的 Milvus collection，使用缓存机制避免重复创建和加载。
+#     """
+#     env, env_cfg = get_env_config(env)
+#     alias = env  # 使用环境名作为连接别名
+#     collection_name = env_cfg["collection_name"]
+#     print(collection_name)
     
-    # 构建缓存键
+#     # 构建缓存键
+#     cache_key = f"{alias}_{collection_name}"
+    
+#     # 检查连接是否已存在，不存在则创建
+#     if alias not in _milvus_alias_map:
+#         logger.debug(f"🔌 初始化 Milvus 连接 [{env}]：{env_cfg['milvus_host']}")
+#         connections.connect(alias=alias, host=env_cfg["milvus_host"], port="19530")
+#         _milvus_alias_map[alias] = True
+    
+#     # 检查 Collection 是否已缓存，不存在则创建并加载
+#     if cache_key not in _milvus_collection_cache:
+#         logger.debug(f"📚 加载 Milvus Collection: {collection_name}")
+#         col = Collection(name=collection_name, using=alias)
+#         col.load()
+#         _milvus_collection_cache[cache_key] = col
+    
+#     return _milvus_collection_cache[cache_key]
+
+
+
+
+def get_milvus_collection(env=None):
+    env, env_cfg = get_env_config(env)
+    alias = env
+    collection_name = env_cfg["collection_name"]
+    print(f"📝 正在加载 Collection: {collection_name}")
     cache_key = f"{alias}_{collection_name}"
     
-    # 检查连接是否已存在，不存在则创建
     if alias not in _milvus_alias_map:
         logger.debug(f"🔌 初始化 Milvus 连接 [{env}]：{env_cfg['milvus_host']}")
-        connections.connect(alias=alias, host=env_cfg["milvus_host"], port="19530")
+        connect_params = {
+            "alias": alias,
+            "host": env_cfg["milvus_host"],
+            "port": "19530",
+            "secure": False
+        }
+        if "milvus_user" in env_cfg and "milvus_password" in env_cfg:
+            connect_params["user"] = env_cfg["milvus_user"]
+            connect_params["password"] = env_cfg["milvus_password"]
+
+        connections.connect(**connect_params)
         _milvus_alias_map[alias] = True
-    
-    # 检查 Collection 是否已缓存，不存在则创建并加载
+
     if cache_key not in _milvus_collection_cache:
         logger.debug(f"📚 加载 Milvus Collection: {collection_name}")
         col = Collection(name=collection_name, using=alias)
@@ -122,6 +159,7 @@ def get_milvus_collection(env=None):
         _milvus_collection_cache[cache_key] = col
     
     return _milvus_collection_cache[cache_key]
+
 
 
 def get_index_name(env=None):
@@ -326,13 +364,21 @@ def insert_block_to_milvus(doc_meta_list, embedder, env="dev", batch_size=2) -> 
         [all_docs[0]],  # 用第一条初始化 collection
         embedder,
         collection_name=collection_name,
-        connection_args={"host": host, "port": "19530"},
+        connection_args={
+                "host": host,
+                "port": "19530",
+                "user": cfg.get("milvus_user", ""),
+                "password": cfg.get("milvus_password", ""),
+                "secure": False  # 如果你没启用TLS，一定设为 False！
+            },
         index_params={
             "metric_type": "COSINE",
             "index_type": "IVF_FLAT",
             "params": {"nlist": 64}
         },
     )
+    
+
 
     inserted = 1
     for i in range(1, len(all_docs), batch_size):
