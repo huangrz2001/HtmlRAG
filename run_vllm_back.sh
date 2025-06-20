@@ -6,10 +6,9 @@ PORT=8011
 MEM_UTIL=0.7        # 显存使用率
 MAX_LEN=4096
 TP_SIZE=2
-SWAP_SPACE=2
+SWAP_SPACE=4
 MAX_SEQS=4
 BATCHED_TOKENS=8192
-
 
 # ========== 启动 Qwen-7B-Chat ==========
 CUDA_VISIBLE_DEVICES=$GPU_IDS python3 -m vllm.entrypoints.openai.api_server \

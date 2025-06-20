@@ -9,9 +9,18 @@
   "min_node_words_embed": 48,
   "log_level": "debug", 
   "blackhole_url": "192.168.18.66:28082",
-  "vllm_api_url": "http://localhost:8011/v1/chat/completions",
+  "vllm_api_servers": [
+    {
+      "url": "http://192.168.7.179:8011/v1/chat/completions",
+      "weight": 1
+    },
+    {
+      "url": "http://192.168.7.247:8011/v1/chat/completions",
+      "weight": 1
+    }
+  ],
   "vllm_max_concurrent_requests": 4,
-  "vllm_timeout": 60,
+  "vllm_timeout": 20,
 
   "env_default": "dev",
   "env_config": {

@@ -50,10 +50,16 @@ import time
 import asyncio
 from utils.config import CONFIG, get_aiohttp_session, close_aiohttp_session, sem, logger
 import aiohttp
+from typing import List, Dict, Optional, Set
+import random
+
 
 
 timeout = CONFIG.get("vllm_timeout", 60)
-api_url = CONFIG.get("vllm_api_url", "http://localhost:8011/v1/chat/completions")
+# api_url = CONFIG.get("vllm_api_url", "http://localhost:8011/v1/chat/completions")
+VLLM_SERVERS = CONFIG.get("vllm_api_servers", [])
+VLLM_TIMEOUT = CONFIG.get("vllm_timeout", 60)
+
 
 
 # ======================== 文档块分类函数 ========================
@@ -386,77 +392,79 @@ def rewrite_query_vllm(
         return fallback_rewrite
 
 
-async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_tokens=128):
+# 均衡负载handler
+def weighted_sample_without_replacement(servers: List[Dict[str, any]], tried: Set[str]) -> Optional[str]:
+    """在未尝试服务器中按权重随机采样一个"""
+    candidates = [(s["url"], s.get("weight", 1)) for s in servers if s["url"] not in tried]
+    if not candidates:
+        return None
+    urls, weights = zip(*candidates)
+    return random.choices(urls, weights=weights, k=1)[0]
+
+
+async def call_vllm_with_retry_weighted(payload: dict, timeout: int = 15, max_retries: Optional[int] = None) -> dict:
     """
-    使用 vLLM 异步接口重写 query，带全局 session 和并发控制
+    带权重的vLLM异步调用，失败自动重试，按权重采样但不重复。
     """
+    tried_urls = set()
+    retries = max_retries or len(VLLM_SERVERS)
+
+    errors = []
+
+    for _ in range(retries):
+        api_url = weighted_sample_without_replacement(VLLM_SERVERS, tried_urls)
+        if api_url is None:
+            break
+        tried_urls.add(api_url)
+
+        try:
+            logger.debug(f"🚀 请求 vLLM: {api_url}")
+            async with aiohttp.ClientSession() as session:
+                async with session.post(api_url, json=payload, timeout=timeout) as resp:
+                    resp.raise_for_status()
+                    result = await resp.json()
+                    return result  # ✅ 成功
+        except Exception as e:
+            logger.warning(f"⚠️ vLLM 请求失败: {api_url} → {e}")
+            errors.append((api_url, str(e)))
+            continue
+
+    # 所有尝试都失败
+    error_msg = "所有 vLLM 实例请求失败: " + "; ".join([f"{url}: {err}" for url, err in errors])
+    raise RuntimeError(error_msg)
+
+
+
+
+async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_tokens=196):
     fallback_rewrite = final_query
     banned_phrases = [
-        # 1. 打招呼 / 寒暄类
         "你好", "您好", "hi", "hello", "哈喽", "在吗", "喂", "请问在吗", "有人吗", "hello？",
-        # 2. 身份询问 / 自我指涉诱导
-        "你是谁", "你是人吗", "你是机器人吗", "你是AI吗", "你叫什么", "你是客服吗",
-        "你是智能助手吗", "你是人工的吗", "你能听懂我说话吗",
-        # 3. 无实际意义 / 灌水类
+        "你是谁", "你是人吗", "你是机器人吗", "你是AI吗", "你叫什么", "你是客服吗", "你是智能助手吗", "你是人工的吗", "你能听懂我说话吗",
         "呵呵", "哈哈", "嗯", "哼", "额", "好吧", "无语", "。。。", "...", "===", "你猜", "随便", "看你咋说",
-        # 4. 测试类 Query
         "测试", "test", "just testing", "随便问问", "这是个测试", "debug", "看看你怎么回答",
-        # 5. 明显非问题类输入
         "今天是几号", "时间", "天气", "北京天气", "今天天气", "讲个笑话", "背首诗", "给我唱首歌", "来段rap",
-        # 6. 系统命令式内容
         "重启一下", "清除缓存", "退出系统", "保存文件", "打开浏览器", "运行代码", "执行脚本", "回答问题",
-        # 7. 故意诱导角色扮演
         "你扮演谁", "假设你是", "你是人类", "如果你是我", "从你的角度看", "你作为一个AI",
-        # 8. 哲学性 / 无关性问题
         "存在的意义是什么", "人生的意义", "什么是真实", "你怎么看这个世界", "你觉得我是谁",
-        # 9. 模糊但非问题（关键词型）
         "商品", "服务", "平台", "抖音", "小红书", "视频", "规则", "政策", "报表"
     ]
-    # # 无意义问题不进行重写，直接返回
+
     if any(phrase == final_query for phrase in banned_phrases):
         logger.debug(f"🔍 命中过滤词 Query 重写跳过：{final_query}")
         return fallback_rewrite
-    
-    # 无对话历史不进行重写，直接返回
+
     if len(dialogue) < 2:
         logger.debug(f"🔍 对话历史过短，跳过 Query 重写：{final_query}")
         return fallback_rewrite
 
-
-    # prompt = (
-    #     "你是一个问题重写API，只会重写优化或复读用户的问题。\n"
-    #     "用户提出的问题可能存在复杂指代、上下文依赖或表达模糊等问题。\n"
-    #     "你需要根据多轮历史对话，丰富润色用户的当前问题，使其成为一个清晰、完整的独立问题。\n\n"
-    #     "下面是要求：\n"
-    #     "- 准确解析用户真实意图，从历史中发掘指代和意图，使得这个独立问题尽量完整，尽可能包含所有信息关键词,特别是要补充关键的动机，指代和场景（润色后的问题至少涉及：用户面对什么前置情况，强调了什么限制，有什么疑问等），但不可以捏造不存在的信息；\n"
-    #     "- 如果当前问题本身是 1.非问题（如“你好”等寒暄，“退出系统”等指令，“呵呵”等无意义灌水），2. 非技术性问题（“你是谁”，“你是AI吗”等身份询问，“人生的意义是什么”等无关性问题），不进行润色直接返回原句子；\n"
-    #     "- 一定一定不可以回答用户问题，你只关注问题本身的润色；\n"
-    #     "- 不添加解释、注释、引导语等，只输出润色后的问题句。\n\n"
-    #     "下面是历史对话：\n"
-    # )
-    # for turn in dialogue:
-    #     role = "用户" if turn.get("speaker") == "user" else "系统"
-    #     content = turn.get("text", "").replace("\n", " ").strip()
-    #     prompt += f"{role}：{content}\n"
-    # prompt += f"用户当前问题是：{final_query.strip()}\n 请你遵循要求进行重写："
-    # payload = {
-    #     "model": model,
-    #     "messages": [{"role": "user", "content": prompt}],
-    #     "max_tokens": max_new_tokens,
-    #     "temperature": 0.2,
-    #     "top_p": 0.5,
-    # }
-
-
-
-    # 构建系统指令作为system角色
     system_prompt = (
         "你是一个专业的问题重写模块，专门用于多轮对话场景下的指代补全与语义还原任务。\n"
         "请严格按照以下规则执行：\n\n"
         "【任务目标】\n"
         "1. 你的目标是准确解析用户真实意图，从历史中发掘指代和意图，使得这个独立问题尽量完整，尽可能包含所有信息关键词,特别是要补充关键的动机，指代和场景（润色后的问题至少涉及：用户面对的前置情况，什么限制，什么疑问等）。\n"
         "2. 仅当历史信息能够提供明确上下文时才进行补全，否则保持当前问题不变。\n"
-        "3. 对于明显不需要补全的问题如：吹水：\"呵呵\"，命令：\"关机\"，无关内容：\"人生的意义\"等，返回原句\n"
+        "3. 对于明显不需要补全的问题如：语气词：\"呵呵\"，命令：\"关机\"，无关内容：\"人生的意义\"等，返回原句\n"
         "4. 不进行任何无关发挥、扩写、润色、修辞性描述、解释、总结、感情色彩。\n"
         "5. 不编造任何不存在的假设背景或新信息。\n"
         "6. 输出格式必须严格遵循：仅输出最终重写结果文本，不包含任何前缀、提示词、说明性文字或换行符。重写的疑问句以：\"我想知道\"开头，非疑问句你自行适配\n"
@@ -470,17 +478,14 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
         "注意：严格按照以上风格工作，禁止任何额外输出。"
     )
 
-    # 构建历史对话为纯对话上下文，不引导模型复述历史
     history_content = ""
     for turn in dialogue:
         role = "用户" if turn.get("speaker") == "user" else "系统"
         content = turn.get("text", "").replace("\n", " ").strip()
         history_content += f"{role}：{content}\n"
 
-    # 当前问题
     current_question = f"当前问题：{final_query.strip()}"
 
-    # 构建最终 messages 结构
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": f"{history_content}\n{current_question}\n请你根据任务规则输出重写结果。"}
@@ -491,46 +496,55 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
         "max_tokens": max_new_tokens,
         "temperature": 0.2,
         "top_p": 0.5,
-        "top_k": -1,  # 禁用 top_k
+        "top_k": -1,
     }
-
 
     try:
         async with sem:
-            session = await get_aiohttp_session()
             start = time.time()
-            logger.debug(f"vLLM 异步重写请求: {final_query}")
-            async with session.post(api_url, json=payload) as resp:
-                resp.raise_for_status()
-                result = await resp.json()
-                rewritten = result["choices"][0]["message"]["content"].strip()
-                logger.debug(f"{final_query} Query 重写成功，耗时 {time.time() - start:.2f}s, 重写结果: {rewritten }")
-                return rewritten or fallback_rewrite
+            result = await call_vllm_with_retry_weighted(payload, timeout=CONFIG.get("vllm_timeout", 60))
+            rewritten = result["choices"][0]["message"]["content"].strip()
+            logger.debug(f"{final_query} 重写成功，用时 {time.time() - start:.2f}s，结果：{rewritten}")
+            return rewritten or fallback_rewrite
     except Exception as e:
-        logger.error(f"⚠️ vLLM 异步重写失败: {e}, 返回原问题")
+        logger.error(f"⚠️ 重写请求失败，返回原问题：{e}")
         return fallback_rewrite
+
 
 
 async def generate_summary_vllm_async(text, page_url, model="glm", max_new_tokens=196):
     """
-    使用 vLLM 异步接口生成摘要，带全局 session 和并发控制
+    使用 vLLM 异步接口生成摘要，支持多机路由与失败重试。
     """
     category = infer_chunk_category(page_url)
     text = text.strip().replace("\x00", "")
+    fallback_summary = text[:max_new_tokens]
 
-    prompt = (
-        f"你正在处理一篇电商平台的知识内容，属于“{category}”类。\n"
-        f"请你根据下方内容提炼其主要信息，要求如下：\n"
-        f"1. 概括要点，不要重复原文原句；\n"
-        f"2. 总长度不超过{max_new_tokens}字，使用简体中文；\n"
-        f"3. 输出格式为完整一句话。\n"
-        f"📂 来源路径：{page_url}\n"
-        f"📄 内容：\n{text}"
+    # 构建 system + user 格式的 prompt
+    system_prompt = (
+        "你是一个智能的内容摘要助手，专门用于提炼电商平台文档的主要信息。\n"
+        "你需要根据给出的文档内容，在保留原意的前提下压缩成一句话摘要。\n\n"
+        "【任务要求】\n"
+        "1. 摘要需准确覆盖原文核心信息，不得添加、编造、扩写。\n"
+        "2. 不允许重复粘贴原文原句或冗余内容。\n"
+        "3. 语言风格应简洁、清晰、无修辞和主观色彩，使用简体中文。\n"
+        "4. 输出格式为一整句话，不包含前缀、项目符号或换行。\n"
+        "5. 字数控制在不超过指定上限，能短则短，尽量精准。\n"
+        "6. 当文本无明显中心内容或格式异常时，请从中提炼关键词或主旨进行简要总结。"
+    )
+
+    user_prompt = (
+        f"文档路径：{page_url}\n"
+        f"所属类目：{category}\n"
+        f"文本内容：{text}"
     )
 
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
         "max_tokens": max_new_tokens,
         "temperature": 0.4,
         "top_p": 0.8,
@@ -538,19 +552,17 @@ async def generate_summary_vllm_async(text, page_url, model="glm", max_new_token
 
     try:
         async with sem:
-            session = await get_aiohttp_session()
             start = time.time()
-            logger.debug(f" vLLM 异步摘要请求: {page_url + ' ' + text[:64]}")
-            async with session.post(api_url, json=payload) as resp:
-                resp.raise_for_status()
-                result = await resp.json()
-                summary = result["choices"][0]["message"]["content"].strip()
-                duration = time.time() - start
-                logger.debug(f"✅ vLLM 异步摘要成功 (耗时 {duration:.2f}s), {page_url + '：' + text[:64]}。摘要内容: {summary[:64]}...")
-                return summary
+            logger.debug(f"📩 vLLM 异步摘要请求: {page_url + ' ' + text[:64]}")
+            result = await call_vllm_with_retry_weighted(payload, timeout=CONFIG.get("vllm_timeout", 60))
+            summary = result["choices"][0]["message"]["content"].strip()
+            duration = time.time() - start
+            logger.debug(f"✅ vLLM 异步摘要成功 (耗时 {duration:.2f}s)，{page_url + '：' + text[:64]}。摘要内容: {summary[:64]}...")
+            return summary or fallback_summary
     except Exception as e:
         logger.error(f"⚠️ vLLM 异步摘要失败: {e}，返回截断文本")
-        return text[:max_new_tokens]
+        return fallback_summary
+
 
 
 
