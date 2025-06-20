@@ -25,10 +25,9 @@ rm -rf __pycache__ \
        总知识库* \
        logs \
        archive \
-       finetune \
-       run_vllm.sh \
+       finetune\\trained_reranker_single\\ \
+       finetune\\wandb\\ \
        run_vllm_back.sh \
-       rewriting_test_set*.json \
        test_insert_api.py \
        test_rewrite_api.py \
        test_rewrite_vllm.py \
@@ -37,6 +36,7 @@ rm -rf __pycache__ \
        *.yaml \
        *.log \
        *.json \
+       *.jsonl \
        *.txt \
        *.dic \
 
