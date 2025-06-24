@@ -15,7 +15,8 @@ def build_payload(dialogue, final_query):
 async def query_once(session, url, payload):
     async with session.post(url, json=payload) as resp:
         data = await resp.json()
-        return data.get("rewritten_query", "") if data.get("status") == "ok" else f"❌ error: {data.get('error')}"
+        rewritten = data.get("rewritten_query", "") if data.get("status") == "ok" else f"❌ error: {data.get('error')}"
+        return rewritten
 
 
 async def main(input_file, concurrent_url):

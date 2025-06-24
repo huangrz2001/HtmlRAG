@@ -435,8 +435,8 @@ async def call_vllm_with_retry_weighted(payload: dict, timeout: int = 15, max_re
 
 
 
-
-async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_tokens=196):
+# max_new_tokens=1024主要防止带思维链输出溢出
+async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_tokens=1024):
     fallback_rewrite = final_query
     banned_phrases = [
         "你好", "您好", "hi", "hello", "哈喽", "在吗", "喂", "请问在吗", "有人吗", "hello？",
@@ -504,6 +504,8 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
             start = time.time()
             result = await call_vllm_with_retry_weighted(payload, timeout=CONFIG.get("vllm_timeout", 60))
             rewritten = result["choices"][0]["message"]["content"].strip()
+            # 如果有思维链
+            rewritten = rewritten.split("</think>")[-1].strip() if "</think>" in rewritten else rewritten.strip()
             logger.debug(f"{final_query} 重写成功，用时 {time.time() - start:.2f}s，结果：{rewritten}")
             return rewritten or fallback_rewrite
     except Exception as e:
@@ -512,7 +514,7 @@ async def rewrite_query_vllm_async(dialogue, final_query, model="glm", max_new_t
 
 
 
-async def generate_summary_vllm_async(text, page_url, model="glm", max_new_tokens=196):
+async def generate_summary_vllm_async(text, page_url, model="glm", max_new_tokens=1024):
     """
     使用 vLLM 异步接口生成摘要，支持多机路由与失败重试。
     """

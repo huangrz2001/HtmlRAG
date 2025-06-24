@@ -211,7 +211,7 @@ bash run_vllm.sh
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8080
-(nohup uvicorn main:app --host 0.0.0.0 --port 8080 > logs/api.log 2>&1)
+(nohup uvicorn main:app --host 0.0.0.0 --port 8080 > logs/api.log 2>&1 &)
 ```
 
 此时可通过浏览器访问：
