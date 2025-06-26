@@ -3,7 +3,7 @@
 set -e
 
 # 💡 配置
-RELEASE_BRANCH="release/1.1.1"
+RELEASE_BRANCH="release/1.1.2"
 SOURCE_BRANCH="master"
 
 # Step 1. 确保工作区干净
@@ -33,6 +33,7 @@ rm -rf __pycache__ \
        test_rewrite_vllm.py \
        test.py \
        nohup.out \
+       *test* \
        *.yaml \
        *.log \
        *.json \

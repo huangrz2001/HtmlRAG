@@ -3,7 +3,6 @@
 # ========== 配置参数 ==========
 GPU_IDS="0,1"
 PORT=8011
-MEM_UTIL=0.7        # 显存使用率
 MAX_LEN=4096
 TP_SIZE=2
 SWAP_SPACE=2
@@ -19,8 +18,7 @@ CUDA_VISIBLE_DEVICES=$GPU_IDS python3 -m vllm.entrypoints.openai.api_server \
   --trust-remote-code \
   --tokenizer-mode auto \
   --dtype float16 \
-  --tensor-parallel-size $TP_SIZE \
-  --gpu-memory-utilization $MEM_UTIL \
+  --tensor-parallel-size 2 \
   --max-model-len $MAX_LEN \
   --max-num-seqs $MAX_SEQS \
   --max-num-batched-tokens $BATCHED_TOKENS \

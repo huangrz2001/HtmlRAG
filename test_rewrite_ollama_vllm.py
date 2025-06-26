@@ -41,6 +41,7 @@ def build_user_input(dialogue, final_query):
     return full_input
 
 
+
 async def query_once(session, url, payload):
     async with session.post(url, json=payload) as resp:
         data = await resp.json()
@@ -51,31 +52,36 @@ async def main(input_file):
     with open(input_file, "r", encoding="utf-8") as f:
         dataset = [json.loads(line) for line in f]
 
-    url = "http://localhost:11434/v1/chat/completions"  # 修改为 Ollama 默认接口
+    url = "http://localhost:9000/v1/chat/completions"  # Ollama 默认地址
     headers = {"Content-Type": "application/json"}
-    system_prompt = build_system_prompt()
 
-    prompts = []
+    system_prompt = build_system_prompt()
+    payloads = []
+
     for item in dataset:
         full_input = build_user_input(item["dialogue"], item["final_query"])
-        prompts.append({
-            "model": "qwen2.5:32b",  # 替换为你实际使用的模型名
+        payloads.append({
+            "model": "glm",  # Ollama 中的模型名
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": full_input}
             ],
-            "max_tokens": 128,
-            "temperature": 0.4,
-            "top_p": 0.8
+            "max_tokens": 256,
+            "temperature": 0.3,
+            "top_p": 0.9
         })
 
     start_time = time.time()
     async with aiohttp.ClientSession(headers=headers) as session:
-        tasks = [query_once(session, url, p) for p in prompts]
+        tasks = [query_once(session, url, p) for p in payloads]
         responses = await asyncio.gather(*tasks)
 
-    for i, res in enumerate(responses):
-        print(f"[{i+1}] ✏️ {res}")
+    for i, (res, item) in enumerate(zip(responses, dataset)):
+        original_query = item["final_query"]
+        print(f"[{i+1}]")
+        print(f"🔹 原问题：{original_query}")
+        print(f"✏️ 重写后：{res}\n")
+
 
     end_time = time.time()
     print(f"\n✅ 并发完成 {len(responses)} 条请求，耗时: {end_time - start_time:.2f}s")
