@@ -100,36 +100,6 @@ def get_es(env=None):
     return _es_clients[env]
 
 
-# def get_milvus_collection(env=None):
-#     """
-#     获取指定环境下的 Milvus collection，使用缓存机制避免重复创建和加载。
-#     """
-#     env, env_cfg = get_env_config(env)
-#     alias = env  # 使用环境名作为连接别名
-#     collection_name = env_cfg["collection_name"]
-#     print(collection_name)
-    
-#     # 构建缓存键
-#     cache_key = f"{alias}_{collection_name}"
-    
-#     # 检查连接是否已存在，不存在则创建
-#     if alias not in _milvus_alias_map:
-#         logger.debug(f"🔌 初始化 Milvus 连接 [{env}]：{env_cfg['milvus_host']}")
-#         connections.connect(alias=alias, host=env_cfg["milvus_host"], port="19530")
-#         _milvus_alias_map[alias] = True
-    
-#     # 检查 Collection 是否已缓存，不存在则创建并加载
-#     if cache_key not in _milvus_collection_cache:
-#         logger.debug(f"📚 加载 Milvus Collection: {collection_name}")
-#         col = Collection(name=collection_name, using=alias)
-#         col.load()
-#         _milvus_collection_cache[cache_key] = col
-    
-#     return _milvus_collection_cache[cache_key]
-
-
-
-
 def get_milvus_collection(env=None):
     env, env_cfg = get_env_config(env)
     alias = env
@@ -212,23 +182,12 @@ def reset_es(env="dev"):
     # es.indices.create(
     #     index=index_name,
     #     body={
-    #         "settings": {
-    #             "analysis": {
-    #                 "analyzer": {
-    #                     "ik_max_word": {
-    #                         "type": "custom",
-    #                         "tokenizer": "ik_max_word"
-    #                     }
-    #                 }
-    #             }
-    #         },
     #         "mappings": {
     #             "properties": {
     #                 "document_index": { "type": "long" },
     #                 "chunk_idx": { "type": "integer" },
     #                 "text": {
     #                     "type": "text",
-    #                     "analyzer": "ik_max_word",
     #                     "fields": { "keyword": { "type": "keyword" } }
     #                 },
     #                 "page_url": {
@@ -237,17 +196,14 @@ def reset_es(env="dev"):
     #                 },
     #                 "page_name": {
     #                     "type": "text",
-    #                     "analyzer": "ik_max_word",
     #                     "fields": { "keyword": { "type": "keyword" } }
     #                 },
     #                 "title": {
     #                     "type": "text",
-    #                     "analyzer": "ik_max_word",
     #                     "fields": { "keyword": { "type": "keyword" } }
     #                 },
     #                 "summary": {
     #                     "type": "text",
-    #                     "analyzer": "ik_max_word",
     #                     "fields": { "keyword": { "type": "keyword" } }
     #                 },
     #                 "time": {
@@ -256,52 +212,42 @@ def reset_es(env="dev"):
     #                 },
     #                 "question": {
     #                     "type": "text",
-    #                     "analyzer": "ik_max_word",
     #                     "fields": { "keyword": { "type": "keyword" } }
     #                 }
+    #                 }
     #             }
-    #         }
-    #     },
+    #         },
     # )
+
     es.indices.create(
-    index=index_name,
-    body={
-        "mappings": {
-            "properties": {
-                "document_index": { "type": "long" },
-                "chunk_idx": { "type": "integer" },
-                "text": {
-                    "type": "text",
-                    "fields": { "keyword": { "type": "keyword" } }
-                },
-                "page_url": {
-                    "type": "text",
-                    "fields": { "keyword": { "type": "keyword" } }
-                },
-                "page_name": {
-                    "type": "text",
-                    "fields": { "keyword": { "type": "keyword" } }
-                },
-                "title": {
-                    "type": "text",
-                    "fields": { "keyword": { "type": "keyword" } }
-                },
-                "summary": {
-                    "type": "text",
-                    "fields": { "keyword": { "type": "keyword" } }
-                },
-                "time": {
-                    "type": "text",
-                    "fields": { "keyword": { "type": "keyword" } }
-                },
-                "question": {
-                    "type": "text",
-                    "fields": { "keyword": { "type": "keyword" } }
-                }
+        index=index_name,
+        body={
+            "mappings": {
+                "properties": {
+                    "document_index": { "type": "long", "index": False },
+                    "chunk_idx": { "type": "integer", "index": False },
+                    "text": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": { "type": "keyword" }
+                        }
+                    },
+                    "page_url": { "type": "text", "index": False },
+                    "page_name": { "type": "text", "index": False },
+                    "title": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": { "type": "keyword" }
+                        }
+                    },
+                    "summary": { "type": "text", "index": False },
+                    "time": { "type": "text", "index": False },
+                    "question": { "type": "text", "index": False }
                 }
             }
-        },
+        }
     )
+
 
     logger.info(f"✅ {env} 环境 ES 索引 '{index_name}' 已成功创建")
 

@@ -9,7 +9,6 @@ SWAP_SPACE=2
 MAX_SEQS=4
 BATCHED_TOKENS=8192
 
-
 # ========== 启动 Qwen-7B-Chat ==========
 CUDA_VISIBLE_DEVICES=$GPU_IDS python3 -m vllm.entrypoints.openai.api_server \
   --model /home/algo/DeepSeek-Chat-7B \
